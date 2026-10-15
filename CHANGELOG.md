@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+- Status bar widget showing Claude Code 5-hour, weekly and scoped weekly usage with reset times.
+- Usage panel with pace markers, projected usage at reset and a summary of this week's sessions.
+- Subagent transcripts: Agents popover, agent view with search and token totals, links from Agent tool calls, and subagent edits in the files changed tab.
+- Teammate messages, system reminders, task notifications and command echoes render as collapsed agent or system turns instead of user prompts.
+- Minimal chat layout: soft user bubbles, plain assistant text, thin tool pills.
+- Responsive viewer header at narrow panel widths.
+- Old/New toggle to open a session at the first or latest message.
+- Colored session icons and live status dots (running, open, recently ended).
+- Fixed slash-command titles, dotted project path decoding, UUID fallback titles and tree jitter.
+
 ## 0.1.0
 
 Initial release.
