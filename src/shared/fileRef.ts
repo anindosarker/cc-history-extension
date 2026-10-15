@@ -23,11 +23,11 @@ export function parseFileRef(text: string): FileRef | undefined {
   const m = SUFFIX.exec(s);
   const path = m ? s.slice(0, m.index) : s;
   if (!path || path.endsWith("/") || path.includes("//")) return undefined;
-  const absolute = path.startsWith("/");
+  // An absolute path without an extension needs two segments (/usr/bin/env), so a lone "/word" in prose is not one.
+  const absolute = path.startsWith("/") && path.length > 1 && (EXTENSION.test(path) || path.indexOf("/", 1) > 0);
   const home = path.startsWith("~/");
-  const relative = !absolute && !home && path.includes("/") && EXTENSION.test(path);
+  const relative = !absolute && !home && !path.startsWith("/") && path.includes("/") && EXTENSION.test(path);
   if (!absolute && !home && !relative) return undefined;
-  if (absolute && path.length < 2) return undefined;
   const ref: FileRef = { path };
   if (m) {
     const line = Number(m[1]);

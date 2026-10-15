@@ -14,6 +14,7 @@ import {
 } from "@/components/Header";
 import { DEFAULT_FILTERS, SearchBar, filtersActive } from "@/components/SearchBar";
 import { nearBottomRight, scrollButtonsFor } from "@/lib/scrollButtons";
+import { displayToolName } from "@shared/toolSummary";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
 import type { Block, FileChange, SessionMeta, Turn } from "@shared/types";
@@ -237,11 +238,57 @@ describe("file links", () => {
       </TooltipProvider>,
     );
     expect((html.match(/tool-file/g) ?? []).length).toBe(3);
-    expect(html).toMatch(/tool-file[^>]*title="Open \/a\/b.ts"[^>]*>\/a\/b.ts<\/button>/);
+    // The path is wrapped in left-to-right marks so its right-to-left clipping keeps the slashes in place.
+    expect(html).toMatch(/tool-file[^>]*title="Open \/a\/b.ts"[^>]*>\u200e<!-- -->\/a\/b.ts<!-- -->\u200e<\/button>/);
     expect(html).toMatch(/tool-file[^>]*title="Open src\/c.ts"/);
     expect(html).toMatch(/tool-file[^>]*title="Open ~\/d.md"/);
     // The Bash summary stays inside the trigger as plain text.
-    expect(html).toMatch(/<span class="min-w-0 truncate tier-3">cat src\/e.ts<\/span>/);
+    expect(html).toMatch(/<span class="min-w-0 flex-1 basis-0 truncate tier-3">cat src\/e.ts<\/span>/);
+  });
+
+  it("truncates long tool names, shortens MCP names, and stacks the path under the trigger when narrow", () => {
+    const mcp: Block = {
+      type: "tool_use",
+      id: "m",
+      name: "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      input: { commands: [] },
+      summary: "run three commands",
+      result: { text: "ok", isError: false },
+    };
+    const write: Block = {
+      type: "tool_use",
+      id: "w",
+      name: "Write",
+      input: { file_path: "/Users/me/Work/Personal/project/src/webview/components/ToolUseBlock.tsx" },
+      summary: "/Users/me/Work/Personal/project/src/webview/components/ToolUseBlock.tsx",
+      result: { text: "ok", isError: false },
+    };
+    const turn: Turn = { uuid: "t", role: "assistant", kind: "assistant", timestamp: 0, blocks: [mcp, write] };
+    const visible = applyFilters([turn], { role: "all", showThinking: true, showTools: true });
+    const render = (narrow: boolean) =>
+      renderToString(
+        <TooltipProvider>
+          <TurnRow item={visible[0]} query="" currentBlock={-1} currentOcc={-1} narrow={narrow} />
+        </TooltipProvider>,
+      );
+    expect(displayToolName("mcp__plugin_context-mode_context-mode__ctx_batch_execute")).toBe("ctx_batch_execute");
+    expect(displayToolName("mcp__GitKraken__git_status")).toBe("git_status");
+    expect(displayToolName("Bash")).toBe("Bash");
+    expect(displayToolName("mcp__")).toBe("mcp__");
+
+    const wide = render(false);
+    // The MCP line shows the short name, keeps the full one in the title and in a hidden span for search marks.
+    expect(wide).toMatch(/tool-name min-w-0 truncate" title="mcp__plugin_context-mode_context-mode__ctx_batch_execute">Used <span class="sr-only">mcp__plugin_context-mode_context-mode__<\/span>ctx_batch_execute<\/span>/);
+    // Next to a path button the trigger keeps its own width and the name does not truncate.
+    expect(wide).toMatch(/tool-line[^"]*shrink-0"[^>]*title="Write \/Users\/me[^"]*"[^>]*>.*?<span class="tool-name shrink-0">Used <!-- -->Write<\/span>/);
+    expect(wide).toMatch(/tool-file tool-path min-w-0 max-w-full truncate[^>]*title="Open \/Users\/me\/Work\/Personal\/project\/src\/webview\/components\/ToolUseBlock.tsx"/);
+    expect(wide).not.toContain("data-stacked");
+
+    const narrow = render(true);
+    // Only the line with a path stacks; the MCP line keeps its single row.
+    expect((narrow.match(/data-stacked="true"/g) ?? []).length).toBe(1);
+    expect(narrow).toMatch(/<div class="[^"]*flex-col[^"]*" data-stacked="true">/);
+    expect(narrow).toMatch(/tool-name min-w-0 truncate"[^>]*>Used <span class="sr-only">/);
   });
 });
 

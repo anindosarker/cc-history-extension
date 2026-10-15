@@ -10,10 +10,11 @@ interface Props {
   query: string;
   current: Match | undefined;
   onToggle: (key: string, open: boolean) => void;
+  narrow?: boolean;
 }
 
 /** One-line "Worked for 4m" divider; the folded turns unfold in place below it. */
-export const FoldRow = memo(function FoldRow({ row, query, current, onToggle }: Props) {
+export const FoldRow = memo(function FoldRow({ row, query, current, onToggle, narrow }: Props) {
   // Last "Expand all" / "Collapse all" request; seq 0 means nobody asked yet.
   const [openAll, setOpenAll] = useState<OpenAll>({ open: false, seq: 0 });
   const calls = `${row.toolCalls} tool call${row.toolCalls === 1 ? "" : "s"}`;
@@ -69,6 +70,7 @@ export const FoldRow = memo(function FoldRow({ row, query, current, onToggle }: 
                   currentBlock={isCurrent && current ? current.blockIndex : -1}
                   currentOcc={isCurrent && current ? current.occ : -1}
                   openAll={openAll}
+                  narrow={narrow}
                 />
               );
             })}

@@ -207,6 +207,11 @@
 .tool-pre {
   background: transparent;
 }
+/* A file path in a tool line clips from the start so the basename stays readable. */
+.tool-path {
+  direction: rtl;
+  text-align: left;
+}
 
 /* Markdown body styling, kept small and VS Code flavoured. */
 .md {

@@ -34,6 +34,8 @@ const SCROLL_LINGER_MS = 1500;
 const SMOOTH_FALLBACK_MS = 700;
 /** From this list width on, the buttons sit in the right gutter outside the 960px content column. */
 const GUTTER_WIDTH = 1040;
+/** Below this list width the content column (16px gutters) is under 480px and tool lines stack their file path. */
+const NARROW_WIDTH = 512;
 
 export function MessageList({
   rows,
@@ -217,6 +219,7 @@ export function MessageList({
   const virtualItems = virtualizer.getVirtualItems();
   const showButtons = (edges.up || edges.down) && (scrolling || nearCorner);
   const inGutter = width !== undefined && width >= GUTTER_WIDTH;
+  const narrow = width !== undefined && width < NARROW_WIDTH;
   return (
     <div
       ref={wrapRef}
@@ -256,13 +259,14 @@ export function MessageList({
                   {row.kind === "date" ? (
                     <DateRow row={row} />
                   ) : row.kind === "fold" ? (
-                    <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} />
+                    <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} narrow={narrow} />
                   ) : (
                     <TurnRow
                       item={row.item}
                       query={query}
                       currentBlock={isCurrentTurn && current ? current.blockIndex : -1}
                       currentOcc={isCurrentTurn && current ? current.occ : -1}
+                      narrow={narrow}
                     />
                   )}
                 </div>

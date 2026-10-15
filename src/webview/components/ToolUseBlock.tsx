@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { parseFileRef } from "@shared/fileRef";
+import { displayToolName } from "@shared/toolSummary";
 import type { Block } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -20,9 +21,14 @@ interface Props {
   /** Occurrence index within the whole block (chip, input, result), or -1. */
   current: number;
   openAll?: OpenAll;
+  /** Narrow content column: a file path gets its own line under the "Used <tool>" trigger. */
+  narrow?: boolean;
 }
 
-export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, openAll }: Props) {
+/** Left-to-right mark; wrapping a right-to-left truncated path in these keeps its slashes in place. */
+const LRM = "\u200e";
+
+export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, openAll, narrow = false }: Props) {
   const [open, setOpen] = useState(openAll?.seq ? openAll.open : false);
   useEffect(() => {
     if (current >= 0) setOpen(true);
@@ -43,35 +49,51 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
   const fileRef = FILE_TOOLS.has(block.name) ? parseFileRef(block.summary) : undefined;
   const summaryCurrent = chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1;
   const summary = <Highlight text={block.summary} query={query} current={summaryCurrent} />;
+  // Search indexes the full name; the hidden prefix keeps the marks (and their count) in the DOM.
+  const shortName = displayToolName(block.name);
+  const prefix = block.name.slice(0, block.name.length - shortName.length);
+  const prefixCount = query ? countOccurrences(prefix, query) : 0;
+  const stacked = narrow && fileRef !== undefined;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
-      <div className="flex items-center gap-2 min-w-0">
+      <div className={cn("flex gap-2 min-w-0", stacked ? "flex-col items-start gap-0.5" : "items-center")} data-stacked={stacked || undefined}>
         <CollapsibleTrigger asChild>
           <button
             type="button"
-            className="tool-line tier-hover flex min-w-0 max-w-full items-center gap-1.5 leading-snug text-left cursor-pointer select-none"
+            className={cn(
+              "tool-line tier-hover flex min-w-0 max-w-full items-center gap-1.5 leading-snug text-left cursor-pointer select-none",
+              // Next to a path button the trigger keeps its own text; alone it may truncate the name.
+              fileRef && !stacked && "shrink-0",
+            )}
             title={`${block.name} ${block.summary}`}
             aria-expanded={open}
           >
-            <span className="shrink-0">
+            <span className={cn("tool-name", fileRef ? "shrink-0" : "min-w-0 truncate")} title={shortName === block.name ? undefined : block.name}>
               {"Used "}
-              <Highlight text={block.name} query={query} current={chipCurrent} />
+              {prefix && (
+                <span className="sr-only">
+                  <Highlight text={prefix} query={query} current={chipCurrent} />
+                </span>
+              )}
+              <Highlight text={shortName} query={query} current={chipCurrent >= 0 ? chipCurrent - prefixCount : -1} />
             </span>
             {isError && <span className="shrink-0 text-[11px] text-destructive">failed</span>}
             <ChevronRight className={cn("size-3 shrink-0 tier-3 transition-transform", open && "rotate-90")} />
-            {!fileRef && <span className="min-w-0 truncate tier-3">{summary}</span>}
+            {!fileRef && <span className="min-w-0 flex-1 basis-0 truncate tier-3">{summary}</span>}
             {block.result === undefined && <span className="shrink-0 text-[11px] tier-3">no result</span>}
           </button>
         </CollapsibleTrigger>
         {fileRef && (
           <button
             type="button"
-            className="file-link tool-file min-w-0 truncate tier-3 text-left cursor-pointer hover:underline"
+            className="file-link tool-file tool-path min-w-0 max-w-full truncate tier-3 text-left cursor-pointer hover:underline"
             onClick={() => openFileRef(fileRef)}
             title={`Open ${fileRef.path}`}
           >
+            {LRM}
             {summary}
+            {LRM}
           </button>
         )}
         {spawned && (

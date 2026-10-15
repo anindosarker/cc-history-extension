@@ -16,9 +16,11 @@ interface Props {
   currentOcc: number;
   /** Set by a fold's "Expand all" / "Collapse all"; every tool and thinking line follows it. */
   openAll?: OpenAll;
+  /** Narrow content column (under 480px): tool lines stack their file path on a second line. */
+  narrow?: boolean;
 }
 
-export const TurnRow = memo(function TurnRow({ item, query, currentBlock, currentOcc, openAll }: Props) {
+export const TurnRow = memo(function TurnRow({ item, query, currentBlock, currentOcc, openAll, narrow }: Props) {
   const { turn, blocks } = item;
   const isUser = turn.role === "user";
   const time = turn.timestamp ? formatClock(turn.timestamp) : "";
@@ -43,7 +45,7 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
           );
         }
         if (b.type === "image") return <ImageBlock key={bi} block={b} />;
-        return <ToolUseBlock key={b.id || bi} block={b} query={query} current={cur} openAll={openAll} />;
+        return <ToolUseBlock key={b.id || bi} block={b} query={query} current={cur} openAll={openAll} narrow={narrow} />;
       })}
       {blocks.length === 0 && <span className="text-muted-foreground italic">(empty)</span>}
     </div>

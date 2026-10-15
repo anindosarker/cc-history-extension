@@ -6,6 +6,8 @@ describe("file reference detector", () => {
   it("accepts absolute, home-relative and relative paths with an extension", () => {
     expect(parseFileRef("/Users/me/proj/src/parser.ts")).toEqual({ path: "/Users/me/proj/src/parser.ts" });
     expect(parseFileRef("/usr/bin/env")).toEqual({ path: "/usr/bin/env" });
+    expect(parseFileRef("/tmp/x")).toEqual({ path: "/tmp/x" });
+    expect(parseFileRef("/notes.md")).toEqual({ path: "/notes.md" });
     expect(parseFileRef("~/.claude/settings.json")).toEqual({ path: "~/.claude/settings.json" });
     expect(parseFileRef("src/parser.ts")).toEqual({ path: "src/parser.ts" });
     expect(parseFileRef("./src/a.test.tsx")).toEqual({ path: "./src/a.test.tsx" });
@@ -29,6 +31,9 @@ describe("file reference detector", () => {
       "file:///a/b.ts",
       "www.example.com/a.ts",
       "a/b",
+      // A lone "/word" in prose is not a path: an extensionless absolute path needs two segments.
+      "/synced",
+      "/synced:12",
       "npm run x",
       "pnpm test",
       "0.1.0",

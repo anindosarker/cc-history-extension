@@ -49,3 +49,13 @@ function firstLine(s: string): string {
 export function clip(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s;
 }
+
+/**
+ * Short display form of a tool name. MCP tools arrive as "mcp__<server>__<tool>" (the server part may
+ * itself be "plugin_<name>_<name>"); only the tool part is shown, the full name goes in the title.
+ */
+export function displayToolName(name: string): string {
+  if (!name.startsWith("mcp__")) return name;
+  const parts = name.split("__").filter((p) => p.length > 0);
+  return parts.length > 1 ? parts[parts.length - 1] : name;
+}
