@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import type { Block } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { agentForToolUse, useAgents } from "@/lib/agents";
 import { countOccurrences, toolUseParts } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
@@ -29,9 +30,12 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }
   const inputCurrent = current >= chipCount && current < chipCount + inputCount ? current - chipCount : -1;
   const resultCurrent = current >= chipCount + inputCount ? current - chipCount - inputCount : -1;
   const isError = block.result?.isError === true;
+  const { agents, openAgent } = useAgents();
+  const spawned = agentForToolUse(agents, block);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
       <CollapsibleTrigger asChild>
         <button
           type="button"
@@ -56,6 +60,17 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }
           {block.result === undefined && <span className="shrink-0 opacity-70">no result</span>}
         </button>
       </CollapsibleTrigger>
+      {spawned && (
+        <button
+          type="button"
+          className="shrink-0 text-[11px] text-link hover:underline cursor-pointer"
+          onClick={() => openAgent(spawned.agentId)}
+          title={`Open the ${spawned.name} transcript`}
+        >
+          Open transcript
+        </button>
+      )}
+      </div>
       <CollapsibleContent>
         <div className="mt-2 flex flex-col gap-2">
           <Section label="Input">

@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { Clipboard, Download, Ellipsis, FileJson, GitBranch, MessageSquare, Play } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
-import type { SessionMeta } from "@shared/types";
+import type { SessionMeta, SubagentInfo } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { useContainerWidth } from "@/lib/useContainerWidth";
 import { post } from "@/lib/vscode";
+import { AgentsButton } from "./AgentsButton";
 import { OpenAtToggle } from "./OpenAtToggle";
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
   turnCount: number;
   openAt: OpenAt;
   onOpenAtChange: (value: OpenAt) => void;
+  agents?: SubagentInfo[];
+  onOpenAgent?: (agentId: string) => void;
 }
 
 /** Below this width action buttons drop their labels. */
@@ -69,7 +72,7 @@ const RESUME: Action = {
   onClick: () => post({ type: "resume" }),
 };
 
-export function Header({ meta, turnCount, openAt, onOpenAtChange }: Props) {
+export function Header({ meta, turnCount, openAt, onOpenAtChange, agents = [], onOpenAgent }: Props) {
   const rootRef = useRef<HTMLElement>(null);
   const layout = layoutFor(useContainerWidth(rootRef));
   const duration =
@@ -81,6 +84,7 @@ export function Header({ meta, turnCount, openAt, onOpenAtChange }: Props) {
           {meta.title}
         </h1>
         <div className="flex items-center gap-1.5 shrink-0">
+          <AgentsButton agents={agents} onOpen={(id) => onOpenAgent?.(id)} compact={layout !== "wide"} />
           <OpenAtToggle value={openAt} onChange={onOpenAtChange} />
           <ActionButton action={RESUME} iconOnly={layout !== "wide"} />
           {layout === "narrow" ? (

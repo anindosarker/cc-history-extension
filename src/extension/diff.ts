@@ -33,6 +33,7 @@ export function extractFileChanges(turns: Turn[]): FileChange[] {
   };
 
   for (const turn of turns) {
+    const agent = turn.agent;
     for (const block of turn.blocks) {
       if (block.type !== "tool_use") continue;
       if (block.result?.isError) continue;
@@ -44,23 +45,23 @@ export function extractFileChanges(turns: Turn[]): FileChange[] {
       if (block.name === "Edit") {
         const p = str(input.file_path);
         if (!p) continue;
-        applyEdit(stateFor(p), block.name, str(input.old_string) ?? "", str(input.new_string) ?? "", input.replace_all === true);
+        applyEdit(stateFor(p), block.name, agent, str(input.old_string) ?? "", str(input.new_string) ?? "", input.replace_all === true);
       } else if (block.name === "MultiEdit") {
         const p = str(input.file_path);
         if (!p || !Array.isArray(input.edits)) continue;
         const st = stateFor(p);
         for (const e of input.edits) {
           const eo = asObj(e);
-          applyEdit(st, block.name, str(eo.old_string) ?? "", str(eo.new_string) ?? "", eo.replace_all === true);
+          applyEdit(st, block.name, agent, str(eo.old_string) ?? "", str(eo.new_string) ?? "", eo.replace_all === true);
         }
       } else if (block.name === "Write") {
         const p = str(input.file_path);
         if (!p) continue;
-        applyWrite(stateFor(p), block.name, str(input.content) ?? "");
+        applyWrite(stateFor(p), block.name, agent, str(input.content) ?? "");
       } else if (block.name === "NotebookEdit") {
         const p = str(input.notebook_path);
         if (!p) continue;
-        applyWrite(stateFor(p), block.name, str(input.new_source) ?? "");
+        applyWrite(stateFor(p), block.name, agent, str(input.new_source) ?? "");
       }
     }
   }
@@ -98,9 +99,17 @@ function noteRead(
   if (st.untouched) st.change.before = text;
 }
 
-function applyEdit(st: FileState, tool: string, oldStr: string, newStr: string, replaceAll: boolean): void {
+function applyEdit(
+  st: FileState,
+  tool: string,
+  agent: string | undefined,
+  oldStr: string,
+  newStr: string,
+  replaceAll: boolean,
+): void {
   const hunk: FileHunk = {
     tool,
+    ...(agent ? { agent } : {}),
     before: oldStr,
     after: newStr,
     added: countLines(newStr),
@@ -116,10 +125,11 @@ function applyEdit(st: FileState, tool: string, oldStr: string, newStr: string, 
   st.current = replaceAll ? st.current.split(oldStr).join(newStr) : st.current.replace(oldStr, () => newStr);
 }
 
-function applyWrite(st: FileState, tool: string, content: string): void {
+function applyWrite(st: FileState, tool: string, agent: string | undefined, content: string): void {
   const before = st.current ?? "";
   pushHunk(st, {
     tool,
+    ...(agent ? { agent } : {}),
     before,
     after: content,
     added: countLines(content),
@@ -131,6 +141,10 @@ function applyWrite(st: FileState, tool: string, content: string): void {
 function pushHunk(st: FileState, hunk: FileHunk): void {
   st.untouched = false;
   st.change.hunks.push(hunk);
+  if (hunk.agent) {
+    const agents = (st.change.agents ??= []);
+    if (!agents.includes(hunk.agent)) agents.push(hunk.agent);
+  }
   st.change.added += hunk.added;
   st.change.removed += hunk.removed;
 }

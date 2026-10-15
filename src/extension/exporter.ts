@@ -3,13 +3,15 @@ import type { SessionData, Turn } from "../shared/types";
 export interface ExportOptions {
   includeToolResults: boolean;
   includeThinking: boolean;
+  /** Replaces the "# <title>" first line, used for subagent transcripts. */
+  heading?: string;
 }
 
 /** Plain-text transcript in the spirit of Claude Code's /export. */
 export function buildTranscript(data: SessionData, opts: ExportOptions): string {
   const { meta } = data;
   const lines: string[] = [];
-  lines.push(`# ${meta.title}`);
+  lines.push(opts.heading ?? `# ${meta.title}`);
   lines.push(`Project: ${meta.cwd}`);
   if (meta.startedAt) lines.push(`Date: ${new Date(meta.startedAt).toISOString()}`);
   if (meta.gitBranch) lines.push(`Branch: ${meta.gitBranch}`);

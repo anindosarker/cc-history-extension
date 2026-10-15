@@ -6,8 +6,8 @@ import { getExportOptions } from "./config";
 import { buildTranscript, exportFileName } from "./exporter";
 
 /** Save the transcript to a .txt file or copy it to the clipboard. */
-export async function exportSession(data: SessionData, mode: "file" | "clipboard"): Promise<void> {
-  const text = buildTranscript(data, getExportOptions());
+export async function exportSession(data: SessionData, mode: "file" | "clipboard", heading?: string): Promise<void> {
+  const text = buildTranscript(data, { ...getExportOptions(), ...(heading ? { heading } : {}) });
   if (mode === "clipboard") {
     await vscode.env.clipboard.writeText(text);
     void vscode.window.showInformationMessage(

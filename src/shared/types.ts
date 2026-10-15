@@ -56,10 +56,32 @@ export interface Turn {
   summary?: string;
   /** System turns: short label derived from the tag, like "task notification". */
   label?: string;
+  /** Name of the subagent whose transcript this turn came from; absent for the main transcript. */
+  agent?: string;
+}
+
+export type SubagentStatus = "running" | "done";
+
+/** One subagent transcript next to a session, listed from its meta.json and a cheap stat. */
+export interface SubagentInfo {
+  agentId: string;
+  name: string;
+  description: string;
+  model?: string;
+  color?: string;
+  /** The Agent tool_use id in the parent transcript that spawned this agent, when recorded. */
+  toolUseId?: string;
+  filePath: string;
+  size: number;
+  startedAt?: number;
+  endedAt?: number;
+  status: SubagentStatus;
 }
 
 export interface FileHunk {
   tool: string;
+  /** Subagent that made this edit; absent when the main transcript did. */
+  agent?: string;
   before: string;
   after: string;
   added: number;
@@ -69,6 +91,8 @@ export interface FileHunk {
 export interface FileChange {
   path: string;
   hunks: FileHunk[];
+  /** Subagents that edited this file, in first-edit order. */
+  agents?: string[];
   added: number;
   removed: number;
   /** Whole-file reconstruction, present only when every edit applied cleanly. */

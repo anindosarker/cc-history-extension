@@ -44,3 +44,10 @@ export function prettyJson(v: unknown): string {
     return String(v);
   }
 }
+
+/** "2.2M", "15.3k", "980" */
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}

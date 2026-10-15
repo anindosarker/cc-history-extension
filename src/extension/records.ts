@@ -11,11 +11,32 @@ export interface RawRecord {
   gitBranch?: string;
   customTitle?: string;
   aiTitle?: string;
+  agentId?: string;
   message?: {
     id?: string;
     role?: string;
     content?: unknown;
+    usage?: RawUsage;
   };
+}
+
+export interface RawUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/** Input, output and both cache buckets added together. */
+export function usageTotal(u: RawUsage | undefined): number {
+  if (!u) return 0;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return n(u.input_tokens) + n(u.output_tokens) + n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens);
+}
+
+export interface ClassifyOptions {
+  /** Keep sidechain records; subagent transcripts are made of nothing else. */
+  sidechain?: boolean;
 }
 
 export interface RawBlock {
@@ -130,9 +151,10 @@ export type RecordKind = "user" | "agent" | "system" | "assistant" | "toolResult
  * A user record is "system" only when every text block in it is system-shaped, so a prompt that
  * arrives bundled with an injected reminder still counts as the person's prompt.
  */
-export function classifyRecord(r: RawRecord): RecordKind {
+export function classifyRecord(r: RawRecord, opts: ClassifyOptions = {}): RecordKind {
   if (r.type !== "user" && r.type !== "assistant") return "skip";
-  if (r.isMeta || r.isSidechain) return "skip";
+  if (r.isMeta) return "skip";
+  if (r.isSidechain && !opts.sidechain) return "skip";
   const content = r.message?.content;
   if (content === undefined || content === null) return "skip";
   if (r.type === "assistant") return "assistant";

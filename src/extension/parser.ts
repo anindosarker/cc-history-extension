@@ -9,8 +9,10 @@ import {
   parseTimestamp,
   systemLabel,
   toolResultText,
+  usageTotal,
   userPlainText,
   userRawText,
+  type ClassifyOptions,
   type RawRecord,
 } from "./records";
 
@@ -27,6 +29,13 @@ export interface ParsedSession {
   startedAt?: number;
   lastActivityAt?: number;
   turns: Turn[];
+  /** Tokens over every assistant message (input, output and cache), counted once per message id. */
+  tokens: number;
+}
+
+export interface ParseOptions extends ClassifyOptions {
+  /** Tag every turn with this subagent name. */
+  agent?: string;
 }
 
 /**
@@ -35,15 +44,18 @@ export interface ParsedSession {
  * and tool_result records are attached to their tool_use instead of shown as turns.
  */
 export class SessionBuilder {
-  private readonly result: ParsedSession = { turns: [] };
+  private readonly result: ParsedSession = { turns: [], tokens: 0 };
   private readonly toolUses = new Map<string, Extract<Block, { type: "tool_use" }>>();
   private lastAssistantMsgId: string | undefined;
+  private lastUsageMsgId: string | undefined;
+
+  constructor(private readonly opts: ParseOptions = {}) {}
 
   push(line: string): void {
     const r = asRecord(tryParseJson(line));
     if (!r) return;
     this.noteMetadata(r);
-    const kind = classifyRecord(r);
+    const kind = classifyRecord(r, this.opts);
     if (kind === "skip") return;
     const ts = parseTimestamp(r.timestamp) ?? this.result.lastActivityAt ?? 0;
     if (kind === "toolResultOnly") {
@@ -76,6 +88,7 @@ export class SessionBuilder {
     }
     const blocks = this.assistantBlocks(r);
     const msgId = r.message?.id;
+    this.noteUsage(r, msgId);
     const prev = this.result.turns[this.result.turns.length - 1];
     if (msgId && msgId === this.lastAssistantMsgId && prev?.role === "assistant") {
       prev.blocks.push(...blocks);
@@ -93,7 +106,15 @@ export class SessionBuilder {
     return this.result;
   }
 
+  /** Streaming writes one record per content block, all carrying the same message usage, so count each id once. */
+  private noteUsage(r: RawRecord, msgId: string | undefined): void {
+    if (msgId && msgId === this.lastUsageMsgId) return;
+    this.lastUsageMsgId = msgId;
+    this.result.tokens += usageTotal(r.message?.usage);
+  }
+
   private appendTurn(turn: Turn, ts: number): void {
+    if (this.opts.agent) turn.agent = this.opts.agent;
     this.result.turns.push(turn);
     if (ts) {
       if (this.result.startedAt === undefined) this.result.startedAt = ts;
@@ -167,14 +188,14 @@ export class SessionBuilder {
   }
 }
 
-export function parseSessionText(text: string): ParsedSession {
-  const b = new SessionBuilder();
+export function parseSessionText(text: string, opts: ParseOptions = {}): ParsedSession {
+  const b = new SessionBuilder(opts);
   for (const line of text.split(/\r?\n/)) if (line) b.push(line);
   return b.finish();
 }
 
-export async function parseSessionFile(filePath: string): Promise<ParsedSession> {
-  const b = new SessionBuilder();
+export async function parseSessionFile(filePath: string, opts: ParseOptions = {}): Promise<ParsedSession> {
+  const b = new SessionBuilder(opts);
   await forEachLine(filePath, (line) => b.push(line));
   return b.finish();
 }

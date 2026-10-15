@@ -2,13 +2,15 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { HostToWebview, WebviewToHost } from "../shared/protocol";
-import type { FileChange, SessionData, SessionMeta, Turn } from "../shared/types";
-import { getOpenAt, setOpenAt } from "./config";
+import type { FileChange, SessionData, SessionMeta, SubagentInfo, Turn } from "../shared/types";
+import { getOpenAt, getSessionsDir, setOpenAt } from "./config";
 import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
 import { exportSession } from "./exportHost";
-import { parseSessionFile } from "./parser";
+import { readLiveSessionIds } from "./liveStatus";
+import { parseSessionFile, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
+import { listSubagents, mergedFileChanges, parseSubagentFile } from "./subagents";
 
 const CHUNK_THRESHOLD = 5000;
 const CHUNK_SIZE = 1000;
@@ -54,6 +56,9 @@ export class SessionPanelManager implements vscode.Disposable {
 class SessionPanel {
   private readonly panel: vscode.WebviewPanel;
   private data: SessionData | undefined;
+  private agents: SubagentInfo[] = [];
+  private readonly agentCache = new Map<string, Promise<ParsedSession>>();
+  private mergedFiles: Promise<FileChange[]> | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -114,7 +119,17 @@ class SessionPanel {
         await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(this.meta.filePath));
         return;
       case "export":
-        if (this.data) await exportSession(this.data, msg.mode);
+        if (msg.agentId) await this.exportAgent(msg.agentId, msg.mode);
+        else if (this.data) await exportSession(this.data, msg.mode);
+        return;
+      case "listAgents":
+        await this.sendAgents();
+        return;
+      case "loadAgent":
+        await this.sendAgent(msg.agentId);
+        return;
+      case "loadFiles":
+        await this.sendMergedFiles();
         return;
       case "resume":
         resumeSession(this.meta);
@@ -131,6 +146,8 @@ class SessionPanel {
 
   private async load(): Promise<void> {
     this.post({ type: "loading" });
+    this.agentCache.clear();
+    this.mergedFiles = undefined;
     try {
       this.data = await loadSessionData(this.meta);
     } catch (err) {
@@ -140,6 +157,100 @@ class SessionPanel {
     this.meta = this.data.meta;
     this.panel.title = this.meta.title;
     this.sendData(this.data.turns, this.data.files);
+  }
+
+  private async sendAgents(): Promise<void> {
+    let parentAlive = false;
+    try {
+      parentAlive = (await readLiveSessionIds(getSessionsDir())).has(this.meta.sessionId);
+    } catch {
+      /* no sessions folder, treat the parent as ended */
+    }
+    this.agents = await listSubagents(this.meta, { parentAlive });
+    this.post({ type: "agents", list: this.agents });
+  }
+
+  private parsedAgent(agentId: string): Promise<ParsedSession> | undefined {
+    const info = this.agents.find((a) => a.agentId === agentId);
+    if (!info) return undefined;
+    let p = this.agentCache.get(agentId);
+    if (!p) {
+      p = parseSubagentFile(info);
+      this.agentCache.set(agentId, p);
+      p.catch(() => this.agentCache.delete(agentId));
+    }
+    return p;
+  }
+
+  private async sendAgent(agentId: string): Promise<void> {
+    const pending = this.parsedAgent(agentId);
+    if (!pending) {
+      this.post({ type: "agentError", agentId, message: "This agent transcript is no longer listed." });
+      return;
+    }
+    let parsed: ParsedSession;
+    try {
+      parsed = await pending;
+    } catch (err) {
+      this.post({ type: "agentError", agentId, message: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    const turns = parsed.turns;
+    this.post({ type: "agentStart", agentId, totalTurns: turns.length, tokens: parsed.tokens });
+    if (turns.length <= CHUNK_THRESHOLD) {
+      this.post({ type: "agentTurns", agentId, turns, offset: 0, done: true });
+      return;
+    }
+    for (let offset = 0; offset < turns.length; offset += CHUNK_SIZE) {
+      const slice = turns.slice(offset, offset + CHUNK_SIZE);
+      this.post({ type: "agentTurns", agentId, turns: slice, offset, done: offset + CHUNK_SIZE >= turns.length });
+    }
+  }
+
+  /** Files across main and every subagent; parsed once per panel load and reused by openDiff. */
+  private async sendMergedFiles(): Promise<void> {
+    if (!this.data) return;
+    if (!this.mergedFiles) {
+      const main = this.data;
+      this.mergedFiles = (async () => {
+        const agentTurns: Turn[][] = [];
+        for (const a of this.agents) {
+          try {
+            agentTurns.push((await this.parsedAgent(a.agentId))!.turns);
+          } catch {
+            /* skip transcripts that fail to parse */
+          }
+        }
+        const files = mergedFileChanges(main.turns, agentTurns);
+        main.files = files;
+        return files;
+      })();
+      this.mergedFiles.catch(() => (this.mergedFiles = undefined));
+    }
+    try {
+      this.post({ type: "files", files: await this.mergedFiles });
+    } catch (err) {
+      this.post({ type: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  private async exportAgent(agentId: string, mode: "file" | "clipboard"): Promise<void> {
+    const info = this.agents.find((a) => a.agentId === agentId);
+    const pending = this.parsedAgent(agentId);
+    if (!info || !pending) return;
+    const parsed = await pending;
+    const data: SessionData = {
+      meta: {
+        ...this.meta,
+        title: `${this.meta.title} - agent ${info.name}`,
+        startedAt: parsed.startedAt ?? info.startedAt,
+        lastActivityAt: parsed.lastActivityAt ?? info.endedAt,
+        messageCount: parsed.turns.length,
+      },
+      turns: parsed.turns,
+      files: [],
+    };
+    await exportSession(data, mode, `# Agent: ${info.name} (${info.description})`);
   }
 
   private sendData(turns: Turn[], files: FileChange[]): void {

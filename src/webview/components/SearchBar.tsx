@@ -41,7 +41,7 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
               e.preventDefault();
               if (e.shiftKey) onPrev();
               else onNext();
-            } else if (e.key === "Escape") {
+            } else if (e.key === "Escape" && query) {
               e.preventDefault();
               onQueryChange("");
             }
