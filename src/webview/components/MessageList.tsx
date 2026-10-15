@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { OpenAt } from "@shared/openAt";
 import type { Match, Row } from "@/lib/search";
+import { DateRow } from "./DateRow";
 import { FoldRow } from "./FoldRow";
 import { TurnRow } from "./TurnRow";
 
@@ -39,7 +40,12 @@ export function MessageList({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => (rows[i]?.kind === "fold" && !rows[i].open ? 28 : 140),
+    estimateSize: (i) => {
+      const r = rows[i];
+      if (!r) return 140;
+      if (r.kind === "date") return 28;
+      return r.kind === "fold" && !r.open ? 28 : 140;
+    },
     overscan: 6,
     getItemKey: (i) => rows[i]?.key ?? i,
   });
@@ -147,7 +153,9 @@ export function MessageList({
                   transform: `translateY(${vi.start}px)`,
                 }}
               >
-                {row.kind === "fold" ? (
+                {row.kind === "date" ? (
+                  <DateRow row={row} />
+                ) : row.kind === "fold" ? (
                   <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} />
                 ) : (
                   <TurnRow

@@ -1,5 +1,5 @@
 import type { Block, Turn } from "@shared/types";
-import { formatDuration, prettyJson } from "./format";
+import { dayKey, formatDayLabel, formatDuration, prettyJson } from "./format";
 
 export type RoleFilter = "all" | "user" | "assistant";
 
@@ -57,6 +57,7 @@ export function toolUseParts(b: Extract<Block, { type: "tool_use" }>): [string, 
 export function blockText(b: Block): string {
   if (b.type === "text") return b.text;
   if (b.type === "thinking") return b.thinking;
+  if (b.type === "image") return "";
   return toolUseParts(b).join("\n");
 }
 
@@ -109,7 +110,21 @@ export interface TurnRowModel {
   visibleIndex: number;
 }
 
-export type Row = FoldRow | TurnRowModel;
+/** A thin centered "Tue, Sep 29" line where the calendar day changes; not a message, never a match. */
+export interface DateRow {
+  kind: "date";
+  key: string;
+  label: string;
+  timestamp: number;
+}
+
+export type Row = FoldRow | TurnRowModel | DateRow;
+
+/** A fold's "Expand all" / "Collapse all" request; seq bumps on every click so blocks re-apply it. */
+export interface OpenAll {
+  open: boolean;
+  seq: number;
+}
 
 export interface RowModel {
   rows: Row[];
@@ -128,8 +143,16 @@ export function buildRows(visible: VisibleTurn[], matches: Match[], expanded: Re
   const rows: Row[] = [];
   const rowOf: number[] = new Array(visible.length);
   let i = 0;
+  let lastDay: string | undefined;
   while (i < visible.length) {
     const v = visible[i];
+    if (v.turn.timestamp) {
+      const day = dayKey(v.turn.timestamp);
+      if (lastDay !== undefined && day !== lastDay) {
+        rows.push({ kind: "date", key: `date:${v.turn.uuid}`, label: formatDayLabel(v.turn.timestamp), timestamp: v.turn.timestamp });
+      }
+      lastDay = day;
+    }
     if (!isWorkTurn(v.turn)) {
       rowOf[i] = rows.length;
       rows.push({ kind: "turn", key: v.turn.uuid, item: v, visibleIndex: i });
@@ -142,13 +165,16 @@ export function buildRows(visible: VisibleTurn[], matches: Match[], expanded: Re
     while (i < visible.length && isWorkTurn(visible[i].turn)) {
       for (const b of visible[i].turn.blocks) if (b.type === "tool_use") toolCalls++;
       if (matched.has(i)) hasMatch = true;
+      if (visible[i].turn.timestamp) lastDay = dayKey(visible[i].turn.timestamp);
       rowOf[i] = rows.length;
       i++;
     }
     const items = visible.slice(start, i);
     const key = `fold:${v.turn.uuid}`;
     const first = items[0].turn.timestamp;
-    const last = items[items.length - 1].turn.timestamp;
+    // The work runs until the turn after the run (usually the final text) arrives; without one,
+    // the last folded turn is the best end we have.
+    const last = (visible[i] ?? items[items.length - 1]).turn.timestamp;
     rows.push({
       kind: "fold",
       key,

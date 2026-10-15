@@ -48,6 +48,8 @@ function renderTurn(turn: Turn, opts: ExportOptions): string {
       parts.push(b.text.trimEnd());
     } else if (b.type === "thinking") {
       if (opts.includeThinking) parts.push(`[Thinking]\n${b.thinking.trimEnd()}`);
+    } else if (b.type === "image") {
+      parts.push("[image]");
     } else {
       parts.push(`[Tool: ${b.name}] ${b.summary}`.trimEnd());
       if (opts.includeToolResults && b.result) {

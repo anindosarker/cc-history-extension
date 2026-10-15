@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionText } from "../src/extension/parser";
+import { base64Bytes, MAX_IMAGE_BASE64_CHARS, parseSessionText } from "../src/extension/parser";
 import { assistantMsg, line, toolResult, toolUse, userMsg } from "./fixtures";
 
 describe("parser", () => {
@@ -77,5 +77,32 @@ describe("parser", () => {
     expect(s.cwd).toBe("/first");
     expect(s.startedAt).toBe(Date.parse("2026-01-01T00:00:00.000Z"));
     expect(s.lastActivityAt).toBe(Date.parse("2026-01-01T01:00:00.000Z"));
+  });
+});
+
+describe("pasted images", () => {
+  const image = (data: string) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+
+  it("keeps a pasted image as an image block next to the prompt text", () => {
+    const s = parseSessionText([userMsg([{ type: "text", text: "what is this" }, image("iVBORw0KGgo=")])].join("\n"));
+    expect(s.turns).toHaveLength(1);
+    expect(s.turns[0].kind).toBe("user");
+    expect(s.turns[0].blocks).toEqual([
+      { type: "text", text: "what is this" },
+      { type: "image", mediaType: "image/png", data: "iVBORw0KGgo=" },
+    ]);
+    // A text reference Claude Code leaves in some prompts stays plain text.
+    const ref = parseSessionText(userMsg("[Image: source: /tmp/shot.png]"));
+    expect(ref.turns[0].blocks).toEqual([{ type: "text", text: "[Image: source: /tmp/shot.png]" }]);
+  });
+
+  it("replaces an image over the cap with a placeholder that says how big it was", () => {
+    const big = "A".repeat(MAX_IMAGE_BASE64_CHARS + 4);
+    const s = parseSessionText(userMsg([image(big)]));
+    expect(s.turns[0].blocks).toEqual([{ type: "image", omitted: true, bytes: base64Bytes(big) }]);
+    expect(base64Bytes(big)).toBe(((MAX_IMAGE_BASE64_CHARS + 4) * 3) / 4);
+    expect(base64Bytes("iVBORw0KGgo=")).toBe(8);
+    const atCap = parseSessionText(userMsg([image("A".repeat(MAX_IMAGE_BASE64_CHARS))]));
+    expect(atCap.turns[0].blocks[0]).toMatchObject({ type: "image", mediaType: "image/png" });
   });
 });

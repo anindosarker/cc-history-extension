@@ -63,3 +63,27 @@ describe("exporter", () => {
     expect(exportFileName("Fix the bug", Date.UTC(2026, 0, 2, 10))).toBe("fix-the-bug-2026-01-02.txt");
   });
 });
+
+describe("export of pasted images", () => {
+  it("writes [image] for inline and omitted images alike", () => {
+    const withImages: SessionData = {
+      ...data,
+      turns: [
+        {
+          uuid: "i",
+          role: "user",
+          kind: "user",
+          timestamp: 0,
+          blocks: [
+            { type: "text", text: "look" },
+            { type: "image", mediaType: "image/png", data: "abc=" },
+            { type: "image", omitted: true, bytes: 5 },
+          ],
+        },
+      ],
+    };
+    const text = buildTranscript(withImages, { includeToolResults: false, includeThinking: false });
+    expect(text).toContain("User:\nlook\n[image]\n[image]");
+    expect(text).not.toContain("abc=");
+  });
+});

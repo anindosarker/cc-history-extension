@@ -49,6 +49,8 @@ export interface RawBlock {
   tool_use_id?: string;
   content?: unknown;
   is_error?: boolean;
+  /** Image blocks: {type: "base64", media_type, data}. */
+  source?: { type?: string; media_type?: string; data?: string };
 }
 
 export function asRecord(v: unknown): RawRecord | undefined {

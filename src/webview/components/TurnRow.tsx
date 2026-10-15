@@ -1,8 +1,9 @@
 import { memo } from "react";
-import type { VisibleTurn } from "@/lib/search";
+import type { OpenAll, VisibleTurn } from "@/lib/search";
 import { countOccurrences, blockText } from "@/lib/search";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatFullDateTime } from "@/lib/format";
 import { AgentTurn, SystemTurn } from "./InjectedTurn";
+import { ImageBlock } from "./ImageBlock";
 import { TextBlock } from "./TextBlock";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolUseBlock } from "./ToolUseBlock";
@@ -13,12 +14,15 @@ interface Props {
   /** Block index of the current match inside this turn, or -1. */
   currentBlock: number;
   currentOcc: number;
+  /** Set by a fold's "Expand all" / "Collapse all"; every tool and thinking line follows it. */
+  openAll?: OpenAll;
 }
 
-export const TurnRow = memo(function TurnRow({ item, query, currentBlock, currentOcc }: Props) {
+export const TurnRow = memo(function TurnRow({ item, query, currentBlock, currentOcc, openAll }: Props) {
   const { turn, blocks } = item;
   const isUser = turn.role === "user";
   const time = turn.timestamp ? formatClock(turn.timestamp) : "";
+  const fullTime = turn.timestamp ? formatFullDateTime(turn.timestamp) : undefined;
   // Injected turns carry a single text block, so the current occurrence lives in block 0.
   const injectedCurrent = currentBlock === 0 ? currentOcc : -1;
   if (turn.kind === "agent") return <AgentTurn item={item} query={query} current={injectedCurrent} time={time} />;
@@ -32,9 +36,12 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
           return <TextBlock key={bi} text={b.text} query={query} current={cur} hasMatch={hasMatch} />;
         }
         if (b.type === "thinking") {
-          return <ThinkingBlock key={bi} text={b.thinking} query={query} current={cur} hasMatch={hasMatch} />;
+          return (
+            <ThinkingBlock key={bi} text={b.thinking} query={query} current={cur} hasMatch={hasMatch} openAll={openAll} />
+          );
         }
-        return <ToolUseBlock key={b.id || bi} block={b} query={query} current={cur} />;
+        if (b.type === "image") return <ImageBlock key={bi} block={b} />;
+        return <ToolUseBlock key={b.id || bi} block={b} query={query} current={cur} openAll={openAll} />;
       })}
       {blocks.length === 0 && <span className="text-muted-foreground italic">(empty)</span>}
     </div>
@@ -46,7 +53,12 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
         <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[14px] py-[10px]">
           {body}
           {time && (
-            <div className="mt-1.5 text-right text-[11px] leading-none text-muted-foreground select-none">{time}</div>
+            <div
+              className="mt-1.5 text-right text-[11px] leading-none text-muted-foreground select-none"
+              title={fullTime}
+            >
+              {time}
+            </div>
           )}
         </div>
       </div>
@@ -55,7 +67,7 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
 
   return (
     <div className="chat-turn px-4 py-[10px]" data-turn-index={item.index}>
-      <div className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none">
+      <div className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none" title={fullTime}>
         {["Claude", time].filter(Boolean).join(" · ")}
       </div>
       {body}

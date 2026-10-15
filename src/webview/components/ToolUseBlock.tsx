@@ -4,7 +4,7 @@ import type { Block } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { agentForToolUse, useAgents } from "@/lib/agents";
-import { countOccurrences, toolUseParts } from "@/lib/search";
+import { countOccurrences, toolUseParts, type OpenAll } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 
@@ -15,13 +15,17 @@ interface Props {
   query: string;
   /** Occurrence index within the whole block (chip, input, result), or -1. */
   current: number;
+  openAll?: OpenAll;
 }
 
-export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }: Props) {
-  const [open, setOpen] = useState(false);
+export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, openAll }: Props) {
+  const [open, setOpen] = useState(openAll?.seq ? openAll.open : false);
   useEffect(() => {
     if (current >= 0) setOpen(true);
   }, [current]);
+  useEffect(() => {
+    if (openAll?.seq) setOpen(openAll.open);
+  }, [openAll?.seq, openAll?.open]);
 
   const [chip, input, result] = toolUseParts(block);
   const chipCount = query ? countOccurrences(chip, query) : 0;
@@ -39,25 +43,24 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className={cn(
-            "tool-pill inline-flex max-w-full items-center gap-1 rounded-[6px] border px-2 py-[3px] text-[11px] leading-none text-left text-muted-foreground hover:text-foreground cursor-pointer select-none",
-            isError && "border-destructive/50",
-          )}
+          className="tool-line flex min-w-0 max-w-full items-center gap-1.5 text-[13px] leading-snug text-left text-muted-foreground hover:text-foreground cursor-pointer select-none"
           title={`${block.name} ${block.summary}`}
+          aria-expanded={open}
         >
-          <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
           <span className="shrink-0">
+            {"Used "}
             <Highlight text={block.name} query={query} current={chipCurrent} />
           </span>
-          <span className="min-w-0 truncate font-mono opacity-80">
+          {isError && <span className="shrink-0 text-[11px] text-destructive">failed</span>}
+          <ChevronRight className={cn("size-3 shrink-0 opacity-70 transition-transform", open && "rotate-90")} />
+          <span className="min-w-0 truncate opacity-60">
             <Highlight
               text={block.summary}
               query={query}
               current={chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1}
             />
           </span>
-          {isError && <span className="shrink-0 text-destructive">error</span>}
-          {block.result === undefined && <span className="shrink-0 opacity-70">no result</span>}
+          {block.result === undefined && <span className="shrink-0 text-[11px] opacity-60">no result</span>}
         </button>
       </CollapsibleTrigger>
       {spawned && (

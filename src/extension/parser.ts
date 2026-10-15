@@ -13,11 +13,29 @@ import {
   userPlainText,
   userRawText,
   type ClassifyOptions,
+  type RawBlock,
   type RawRecord,
 } from "./records";
 
 /** Tool results larger than this are trimmed before leaving the host. */
 export const MAX_TOOL_RESULT_CHARS = 200_000;
+/** Pasted images whose base64 is longer than this are replaced by a placeholder. */
+export const MAX_IMAGE_BASE64_CHARS = 3 * 1024 * 1024;
+
+/** Decoded size of a base64 string, ignoring padding. */
+export function base64Bytes(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
+/** A pasted image as a block, capped so huge pastes do not bloat the payload. */
+export function imageBlock(b: RawBlock): Block {
+  const src = b.source;
+  const data = src?.type === "base64" && typeof src.data === "string" ? src.data : "";
+  if (!data) return { type: "text", text: "[image]" };
+  if (data.length > MAX_IMAGE_BASE64_CHARS) return { type: "image", omitted: true, bytes: base64Bytes(data) };
+  return { type: "image", mediaType: src?.media_type || "image/png", data };
+}
 
 export interface ParsedSession {
   sessionId?: string;
@@ -156,7 +174,7 @@ export class SessionBuilder {
       if (b.type === "text" && typeof b.text === "string" && b.text.trim()) {
         out.push({ type: "text", text: b.text });
       } else if (b.type === "image") {
-        out.push({ type: "text", text: "[image attachment]" });
+        out.push(imageBlock(b));
       }
     }
     return out;

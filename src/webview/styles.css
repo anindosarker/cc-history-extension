@@ -118,7 +118,8 @@
   background: var(--vscode-widget-border, var(--border));
 }
 .tool-pill,
-.tool-pre {
+.tool-pre,
+.image-block {
   border-color: var(--vscode-widget-border, var(--border));
 }
 .tool-pre {

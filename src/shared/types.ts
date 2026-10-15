@@ -36,7 +36,11 @@ export type Block =
       input: unknown;
       summary: string;
       result?: ToolResult;
-    };
+    }
+  /** A pasted image, inline as base64. */
+  | { type: "image"; mediaType: string; data: string }
+  /** A pasted image the host left out because its base64 was over the size cap. */
+  | { type: "image"; omitted: true; bytes: number };
 
 /**
  * What a turn is. "agent" and "system" are user records injected by tooling

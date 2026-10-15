@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import type { OpenAll } from "@/lib/search";
 import { Highlight } from "./Highlight";
 
 const LIMIT = 10_000;
@@ -10,15 +11,19 @@ interface Props {
   query: string;
   current: number;
   hasMatch: boolean;
+  openAll?: OpenAll;
 }
 
 /** A single faint "Thinking…" line; the thinking text unfolds below it on click. */
-export const ThinkingBlock = memo(function ThinkingBlock({ text, query, current, hasMatch }: Props) {
-  const [open, setOpen] = useState(false);
+export const ThinkingBlock = memo(function ThinkingBlock({ text, query, current, hasMatch, openAll }: Props) {
+  const [open, setOpen] = useState(openAll?.seq ? openAll.open : false);
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     if (current >= 0) setOpen(true);
   }, [current]);
+  useEffect(() => {
+    if (openAll?.seq) setOpen(openAll.open);
+  }, [openAll?.seq, openAll?.open]);
   const tooLong = text.length > LIMIT;
   const showFull = !tooLong || expanded || hasMatch;
   return (

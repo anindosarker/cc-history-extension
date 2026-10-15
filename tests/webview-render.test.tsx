@@ -153,14 +153,16 @@ describe("work folds", () => {
     if (first.kind !== "fold" || second.kind !== "fold") throw new Error("expected folds");
     expect(first.items.map((v) => v.turn.uuid)).toEqual(["w1", "w2", "w3"]);
     expect(first.toolCalls).toBe(4);
-    expect(first.durationMs).toBe(4 * MIN);
+    // Measured from the first folded turn to the text turn that follows the run.
+    expect(first.durationMs).toBe(5 * MIN);
     expect(first.open).toBe(false);
     expect(second.items.map((v) => v.turn.uuid)).toEqual(["w4"]);
     expect(second.toolCalls).toBe(1);
+    // Nothing follows the last run, so first-to-last is all there is.
     expect(second.durationMs).toBe(0);
     // Every visible turn maps back to the row that shows it.
     expect(rowOf).toEqual([0, 1, 1, 1, 2, 3, 4]);
-    expect(formatWorkDuration(first.durationMs)).toBe("4m");
+    expect(formatWorkDuration(first.durationMs)).toBe("5m");
     expect(formatWorkDuration(42_000)).toBe("42s");
     expect(formatWorkDuration(65 * MIN)).toBe("1h 5m");
   });
@@ -177,6 +179,31 @@ describe("work folds", () => {
     // An explicit choice wins over the search default, and the other fold stays shut.
     expect(buildRows(visible, matches, new Map([[fold.key, false]])).rows[1]).toMatchObject({ open: false });
     expect(rows[4]).toMatchObject({ kind: "fold", hasMatch: false, open: false });
+  });
+
+  it("puts a date divider where the calendar day changes, outside the match count", () => {
+    const day = 24 * 60 * MIN;
+    const base = Date.UTC(2026, 8, 29, 12); // noon, so local days stay distinct around it
+    const twoDays: Turn[] = [
+      { ...session[0], timestamp: base },
+      { ...session[1], timestamp: base + 1 * MIN },
+      { ...session[4], timestamp: base + 2 * MIN },
+      { ...session[5], timestamp: base + day },
+      { ...session[6], timestamp: base + day + 1 * MIN },
+    ];
+    const visible = applyFilters(twoDays, all);
+    const matches = findMatches(visible, "Done");
+    const { rows, rowOf } = buildRows(visible, matches, new Map());
+    expect(rows.map((r) => r.kind)).toEqual(["turn", "fold", "turn", "date", "turn", "fold"]);
+    const divider = rows[3];
+    if (divider.kind !== "date") throw new Error("expected a date row");
+    expect(divider.label).toMatch(/^(Tue|Wed), Sep 30$/);
+    // Dividers take a row slot but no visible index, so matches and rowOf still line up.
+    expect(rowOf).toEqual([0, 1, 2, 4, 5]);
+    expect(matches).toHaveLength(1);
+    expect(visible).toHaveLength(5);
+    // Same-day turns get no divider at all.
+    expect(buildRows(applyFilters(session, all), [], new Map()).rows.some((r) => r.kind === "date")).toBe(false);
   });
 
   it("hides folds with the tool toggle and keeps them under the assistant role filter", () => {
@@ -197,17 +224,19 @@ describe("work folds", () => {
         <FoldRow row={fold} query="" current={undefined} onToggle={() => {}} />
       </TooltipProvider>,
     );
-    expect(closed).toContain("Worked for 4m");
+    expect(closed).toContain("Worked for 5m");
     expect(closed).toContain("· 4 tool calls");
     expect(closed).toContain('aria-expanded="false"');
-    expect(closed).not.toContain("tool-pill");
+    expect(closed).not.toContain("tool-line");
+    expect(closed).toContain(">Expand all<");
     const open = renderToString(
       <TooltipProvider>
         <FoldRow row={{ ...fold, open: true }} query="" current={undefined} onToggle={() => {}} />
       </TooltipProvider>,
     );
     expect(open).toContain('aria-expanded="true"');
-    expect((open.match(/tool-pill/g) ?? []).length).toBe(4);
+    expect((open.match(/tool-line/g) ?? []).length).toBe(4);
+    expect(open).toContain("Used <!-- -->Bash");
     expect(open).toContain("Thinking…");
     const single = rows[4];
     if (single.kind !== "fold") throw new Error("expected a fold");
@@ -218,6 +247,39 @@ describe("work folds", () => {
     );
     expect(html).toContain("Worked for 0s");
     expect(html).toContain("· 1 tool call<");
+  });
+});
+
+describe("image blocks", () => {
+  const withImages: Turn[] = [
+    {
+      uuid: "img",
+      role: "user",
+      kind: "user",
+      timestamp: 1_700_000_000_000,
+      blocks: [
+        { type: "text", text: "What is this?" },
+        { type: "image", mediaType: "image/png", data: "iVBORw0KGgo=" },
+        { type: "image", omitted: true, bytes: 4_200_000 },
+      ],
+    },
+  ];
+
+  it("renders a thumbnail and an omitted note inside the user bubble, and never searches them", () => {
+    const visible = applyFilters(withImages, { role: "all", showThinking: true, showTools: true });
+    expect(findMatches(visible, "image")).toHaveLength(0);
+    const html = renderToString(
+      <TooltipProvider>
+        <TurnRow item={visible[0]} query="" currentBlock={-1} currentOcc={-1} />
+      </TooltipProvider>,
+    );
+    const bubble = html.slice(html.indexOf("chat-bubble"));
+    expect(bubble).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+    expect(bubble).toContain("max-h-[240px]");
+    expect(bubble).toContain("rounded-[8px]");
+    expect(bubble).toContain("Image omitted (4.2 MB)");
+    // The clock carries the full date as a tooltip.
+    expect(bubble).toMatch(/title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"/);
   });
 });
 
@@ -263,7 +325,11 @@ describe("webview components render on the server", () => {
     const bubble = html.slice(html.indexOf("chat-bubble"), html.indexOf('data-turn-index="1"'));
     expect(bubble).toMatch(/text-right[^>]*>\d\d:\d\d<\/div><\/div><\/div>/);
     expect(html).not.toContain("group-hover:opacity-100");
-    expect(html).toContain("tool-pill");
+    expect(html).toContain("tool-line");
+    // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
+    expect(html).toContain("Used <!-- -->Bash");
+    expect(html).toContain(">failed<");
+    expect(html).not.toContain("tool-pill");
     expect(html).toContain("Thinking…");
     expect(html).toMatch(/>Claude · \d\d:\d\d</);
     expect(html).not.toMatch(/>#\d+</);

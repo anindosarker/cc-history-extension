@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { VisibleTurn } from "@/lib/search";
+import { formatFullDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 import { Markdown } from "./Markdown";
@@ -19,7 +20,7 @@ interface Props {
 
 function bodyOf(item: VisibleTurn): string {
   return item.blocks
-    .map((b) => (b.type === "text" ? b.text : b.type === "thinking" ? b.thinking : b.summary))
+    .map((b) => (b.type === "text" ? b.text : b.type === "thinking" ? b.thinking : b.type === "image" ? "[image]" : b.summary))
     .join("\n");
 }
 
@@ -39,7 +40,10 @@ export const AgentTurn = memo(function AgentTurn({ item, query, current, time }:
   const name = item.turn.agentName ?? "agent";
   return (
     <div className="chat-turn px-4 py-[10px]" data-turn-index={item.index}>
-      <div className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none">
+      <div
+        className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none"
+        title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
+      >
         {["Agent", name, time].filter(Boolean).join(" · ")}
       </div>
       <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
@@ -78,7 +82,7 @@ export const SystemTurn = memo(function SystemTurn({ item, query, current, time 
           <button
             type="button"
             className="flex max-w-full items-center gap-1.5 text-[11px] leading-none text-muted-foreground opacity-70 hover:opacity-100 cursor-pointer select-none"
-            title={`System · ${label}`}
+            title={item.turn.timestamp ? `System · ${label} · ${formatFullDateTime(item.turn.timestamp)}` : `System · ${label}`}
           >
             <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
             <span className="min-w-0 truncate">{["System", label, time].filter(Boolean).join(" · ")}</span>
