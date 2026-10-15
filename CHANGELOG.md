@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4
+
+- Only repository roots that contain the workspace are pinned as current; the home folder no longer is.
+- The divider below pinned projects is a plain rule.
+
 ## 0.4.3
 
 - Usage polling throttled: 5 minute default, one fetch per machine via a shared cache, Retry-After aware backoff on HTTP 429 with an automatic pause, manual refresh limited to once a minute.
