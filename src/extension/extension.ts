@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     indexer,
     status,
+    tree,
     diffs,
     panels,
     view,
@@ -40,7 +41,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerFileDecorationProvider(status),
     view.onDidChangeVisibility((e) => status.setVisible(e.visible)),
     indexer.onDidChange(() => void status.refresh()),
-    vscode.commands.registerCommand("ccHistory.refresh", () => indexer.refresh()),
+    vscode.commands.registerCommand("ccHistory.refresh", () => indexer.refresh().then(() => tree.refresh())),
     vscode.commands.registerCommand("ccHistory.findSession", async () => {
       const meta = await pickSession(indexer);
       if (meta) panels.open(meta);

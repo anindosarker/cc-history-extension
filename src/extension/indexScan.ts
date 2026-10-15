@@ -3,10 +3,12 @@ import * as path from "node:path";
 import type { SessionMeta } from "../shared/types";
 import { resolveTitle } from "../shared/title";
 import { forEachLine, tryParseJson } from "./jsonl";
+import { decodeProjectDirName } from "./projectPath";
 import {
   asRecord,
   blocksOf,
   classifyRecord,
+  extractCommandName,
   parseTimestamp,
   userPlainText,
   type RawBlock,
@@ -24,6 +26,7 @@ export class IndexBuilder {
   private customTitle?: string;
   private aiTitle?: string;
   private firstPrompt?: string;
+  private firstCommand?: string;
   private gitBranch?: string;
   private startedAt?: number;
   private lastActivityAt?: number;
@@ -49,6 +52,9 @@ export class IndexBuilder {
     if (typeof r.gitBranch === "string" && r.gitBranch) this.gitBranch = r.gitBranch;
 
     const kind = classifyRecord(r);
+    if (kind === "skip" && r.type === "user" && !this.firstCommand) {
+      this.firstCommand = extractCommandName(r.message?.content);
+    }
     if (kind === "skip" || kind === "toolResultOnly") return;
     const ts = parseTimestamp(r.timestamp);
     if (ts) {
@@ -82,6 +88,8 @@ export class IndexBuilder {
       customTitle: this.customTitle,
       aiTitle: this.aiTitle,
       firstPrompt: this.firstPrompt,
+      firstCommand: this.firstCommand,
+      startedAt: this.startedAt,
       sessionId,
     });
     const meta: SessionMeta = {
@@ -107,12 +115,6 @@ export class IndexBuilder {
 export function projectNameOf(cwd: string): string {
   const base = path.basename(cwd);
   return base || cwd;
-}
-
-/** Best-effort reverse of Claude Code's directory encoding ("/" becomes "-"). */
-export function decodeProjectDirName(name: string): string {
-  if (!name.startsWith("-")) return name;
-  return name.replace(/-/g, "/");
 }
 
 export async function indexFile(filePath: string): Promise<SessionMeta> {
@@ -229,11 +231,22 @@ export function groupByProject(sessions: SessionMeta[]): ProjectGroup[] {
     g.lastActivityAt = Math.max(g.lastActivityAt, activityOf(s));
   }
   const groups = [...map.values()];
-  for (const g of groups) g.sessions.sort((a, b) => activityOf(b) - activityOf(a));
-  groups.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  // Minute granularity keeps rows from reordering while a session is being written to.
+  for (const g of groups) {
+    g.sessions.sort((a, b) => activityMinute(b) - activityMinute(a) || a.title.localeCompare(b.title));
+  }
+  groups.sort((a, b) => minute(b.lastActivityAt) - minute(a.lastActivityAt) || a.name.localeCompare(b.name));
   return groups;
 }
 
 export function activityOf(s: SessionMeta): number {
   return s.lastActivityAt ?? s.mtime;
+}
+
+export function activityMinute(s: SessionMeta): number {
+  return minute(activityOf(s));
+}
+
+function minute(ts: number): number {
+  return Math.floor(ts / 60_000);
 }

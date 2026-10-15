@@ -34,13 +34,20 @@ export function asRecord(v: unknown): RawRecord | undefined {
   return typeof v === "object" && v !== null ? (v as RawRecord) : undefined;
 }
 
-const NOISE_PREFIXES = ["<command-name>", "<local-command-stdout>", "<local-command-caveat>"];
+const NOISE_PREFIXES = ["<command-name>", "<command-message>", "<local-command-stdout>", "<local-command-caveat>"];
 
 /** Slash-command echo and other local-command noise that should never be displayed. */
 export function isNoiseUserContent(content: unknown): boolean {
   if (typeof content !== "string") return false;
   const s = content.trimStart();
   return NOISE_PREFIXES.some((p) => s.startsWith(p));
+}
+
+/** The slash command inside a command echo, like "/review", or undefined. */
+export function extractCommandName(content: unknown): string | undefined {
+  if (typeof content !== "string") return undefined;
+  const m = /<command-name>\s*([^<]+?)\s*<\/command-name>/.exec(content);
+  return m?.[1] || undefined;
 }
 
 export type RecordKind = "user" | "assistant" | "toolResultOnly" | "skip";

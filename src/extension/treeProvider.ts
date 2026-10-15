@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import type { Indexer } from "./indexer";
-import { activityOf, type ProjectGroup } from "./indexScan";
+import { activityMinute, activityOf, type ProjectGroup } from "./indexScan";
 import { STATUS_LABEL } from "./liveStatus";
 import { statusUri, type SessionStatusProvider } from "./statusProvider";
 import { formatDateTime, relativeTime } from "./time";
 
 /** Sessions with activity this recent get the icon variant with a green dot. */
+
+const REFRESH_DEBOUNCE_MS = 3000;
 
 export class ProjectNode {
   constructor(readonly group: ProjectGroup) {}
@@ -22,6 +24,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly emitter = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sessionIcon: vscode.Uri;
+  private signature = "";
+  private pending: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly indexer: Indexer,
@@ -29,12 +33,47 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     extensionUri: vscode.Uri,
   ) {
     this.sessionIcon = vscode.Uri.joinPath(extensionUri, "media", "session-claude.svg");
-    indexer.onDidChange(() => this.emitter.fire(undefined));
-    status.onDidChange(() => this.emitter.fire(undefined));
+    indexer.onDidChange(() => this.scheduleRefresh());
+    status.onDidChange(() => this.scheduleRefresh());
   }
 
+  /** Immediate, unconditional refresh (manual Refresh command). */
   refresh(): void {
+    if (this.pending) clearTimeout(this.pending);
+    this.pending = undefined;
+    this.signature = this.computeSignature();
     this.emitter.fire(undefined);
+  }
+
+  /** Coalesce bursts of index and status events, and skip the event when nothing visible changed. */
+  private scheduleRefresh(): void {
+    if (this.pending) return;
+    this.pending = setTimeout(() => {
+      this.pending = undefined;
+      const next = this.computeSignature();
+      if (next === this.signature) return;
+      this.signature = next;
+      this.emitter.fire(undefined);
+    }, REFRESH_DEBOUNCE_MS);
+  }
+
+  private computeSignature(): string {
+    return this.indexer.projects
+      .map(
+        (g) =>
+          g.cwd +
+          "{" +
+          g.sessions
+            .map((s) => `${s.sessionId}|${s.title}|${activityMinute(s)}|${this.status.statusOf(s.sessionId) ?? ""}`)
+            .join(",") +
+          "}",
+      )
+      .join(";");
+  }
+
+  dispose(): void {
+    if (this.pending) clearTimeout(this.pending);
+    this.emitter.dispose();
   }
 
   getChildren(element?: TreeNode): TreeNode[] {

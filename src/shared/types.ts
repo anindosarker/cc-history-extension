@@ -1,4 +1,4 @@
-export type TitleSource = "custom" | "ai" | "prompt" | "id";
+export type TitleSource = "custom" | "ai" | "prompt" | "command" | "date" | "id";
 
 export interface SessionMeta {
   sessionId: string;

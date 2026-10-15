@@ -44,3 +44,37 @@ describe("title precedence", () => {
     expect(meta.messageCount).toBe(0);
   });
 });
+
+describe("title fallbacks for slash commands and bare sessions", () => {
+  it("skips slash-command echoes and uses the next real prompt", () => {
+    const text = [
+      userMsg("<command-message>daily-report</command-message>\n<command-name>/daily-report</command-name>"),
+      userMsg("<local-command-stdout>done</local-command-stdout>"),
+      userMsg("please triage the feedback"),
+    ].join("\n");
+    const meta = indexText(text, "/p/-home-me-proj/sess-1.jsonl");
+    expect(meta.title).toBe("please triage the feedback");
+    expect(meta.firstPrompt).toBe("please triage the feedback");
+    expect(meta.messageCount).toBe(1);
+  });
+
+  it("derives the title from the command when no real prompt exists", () => {
+    const text = [
+      userMsg("<command-message>daily-report</command-message>\n<command-name>/daily-report</command-name>"),
+      assistantMsg([{ type: "text", text: "ok" }]),
+    ].join("\n");
+    const meta = indexText(text, "/p/-home-me-proj/sess-1.jsonl");
+    expect(meta.title).toBe("/daily-report");
+    expect(meta.titleSource).toBe("command");
+  });
+
+  it("uses the start date instead of the uuid when nothing else is usable", () => {
+    const text = assistantMsg([{ type: "text", text: "ok" }], { timestamp: "2026-03-04T05:06:07.000Z" });
+    const meta = indexText(text, "/p/-home-me-proj/0f0f0f0f.jsonl");
+    expect(meta.titleSource).toBe("date");
+    expect(meta.title).toMatch(/^Session \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(meta.sessionId).toBe("sess-1");
+    const r = resolveTitle({ sessionId: "abc" });
+    expect(r).toEqual({ title: "abc", source: "id" });
+  });
+});

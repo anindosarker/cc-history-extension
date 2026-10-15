@@ -4,7 +4,7 @@ import type { SessionMeta } from "../shared/types";
 import { getProjectsDir } from "./config";
 import { groupByProject, listSessionFiles, scanProjects, type ProjectGroup } from "./indexScan";
 
-const CACHE_KEY = "ccHistory.index.v1";
+const CACHE_KEY = "ccHistory.index.v2";
 const WATCH_DEBOUNCE_MS = 1000;
 
 /** Owns the in-memory session index, its globalState cache, and the directory watcher. */
