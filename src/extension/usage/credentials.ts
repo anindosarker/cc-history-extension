@@ -4,8 +4,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 /**
- * The OAuth token Claude Code keeps for claude.ai. It is read fresh on every poll and used for
- * one request only; it is never logged, stored or refreshed here (Claude Code rotates it).
+ * The OAuth token Claude Code keeps for claude.ai. It is read once per token lifetime, kept only
+ * in memory and used for one request at a time; it is never logged, stored or refreshed here
+ * (Claude Code rotates it).
  */
 export interface Credentials {
   accessToken: string;
@@ -65,4 +66,36 @@ async function readFile(p: string): Promise<string | undefined> {
 export async function readCredentials(platform = process.platform): Promise<Credentials | undefined> {
   const raw = platform === "darwin" ? (await readKeychain()) ?? (await readFile(credentialsFilePath())) : await readFile(credentialsFilePath());
   return raw ? parseCredentials(raw) : undefined;
+}
+
+/** Reuse a read token until this close to its expiry, then read again. */
+export const REFRESH_MARGIN_MS = 60_000;
+
+/**
+ * In-memory cache in front of readCredentials, so the Keychain is read once per token lifetime
+ * instead of once per poll. Nothing here touches disk or globalState.
+ */
+export class CredentialsCache {
+  private cached: Credentials | undefined;
+
+  constructor(
+    private readonly reader: () => Promise<Credentials | undefined> = () => readCredentials(),
+    private readonly marginMs = REFRESH_MARGIN_MS,
+  ) {}
+
+  /** The cached credentials while they are fresh, otherwise a new read (which may still be absent). */
+  async get(now = Date.now()): Promise<Credentials | undefined> {
+    if (this.cached && this.fresh(this.cached, now)) return this.cached;
+    this.cached = await this.reader();
+    return this.cached;
+  }
+
+  /** Drop the token, for example after the server rejected it. */
+  invalidate(): void {
+    this.cached = undefined;
+  }
+
+  private fresh(c: Credentials, now: number): boolean {
+    return c.expiresAt === undefined || now < c.expiresAt - this.marginMs;
+  }
 }

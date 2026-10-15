@@ -29,9 +29,16 @@ export class UsageError extends Error {
   constructor(
     readonly reason: UsageErrorReason,
     message: string,
+    /** HTTP status for "http" failures, so callers can tell a rejected token from an outage. */
+    readonly status?: number,
   ) {
     super(message);
     this.name = "UsageError";
+  }
+
+  /** True when the server rejected the token itself (401 or 403). */
+  get unauthorized(): boolean {
+    return this.status === 401 || this.status === 403;
   }
 }
 
@@ -135,7 +142,7 @@ export async function fetchUsage(accessToken: string, opts: FetchOptions): Promi
   }
   if (!res.ok) {
     const hint = res.status === 401 || res.status === 403 ? " Sign in again with claude login." : "";
-    throw new UsageError("http", `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}.${hint}`);
+    throw new UsageError("http", `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}.${hint}`, res.status);
   }
   let json: unknown;
   try {

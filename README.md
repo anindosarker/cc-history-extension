@@ -43,6 +43,12 @@ The view lives in a container, so you can drag the "Claude Code History" icon fr
 | `ccHistory.export.includeToolResults` | `false` | Include tool results in text exports. |
 | `ccHistory.export.includeThinking` | `false` | Include thinking blocks in text exports. |
 
+## Usage widget and your credentials
+
+The status bar usage widget shows how much of your Claude Code rate limit is used. To do that it reads the Claude Code OAuth token, from the macOS Keychain entry "Claude Code-credentials" or, elsewhere, from `~/.claude/.credentials.json`. The token is used for one request only: a GET to `api.anthropic.com/api/oauth/usage`, the same endpoint Claude Code itself calls. It is kept in memory until shortly before it expires, never written to disk or VS Code storage, never logged, and never sent anywhere else.
+
+On macOS the first read may show a Keychain access prompt for the `security` tool. Choosing "Always Allow" ends the prompts. Setting `ccHistory.usage.enabled` to `false` turns the whole widget off, and nothing is read.
+
 ## Development
 
 Requires Node 20+ and pnpm 10.

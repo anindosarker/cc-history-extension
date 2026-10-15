@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { readCredentials } from "./credentials";
+import { CredentialsCache } from "./credentials";
 import { intervalMs, nextDelayMs } from "./schedule";
 import { fetchUsage, UsageError, type UsageErrorReason, type UsageSnapshot } from "./usageClient";
 
@@ -49,6 +49,8 @@ export class UsagePoller implements vscode.Disposable {
   private settings = readUsageSettings();
   private focused = vscode.window.state.focused;
   private disposed = false;
+  // Token lives here only; re-read near expiry or after the server rejects it.
+  private readonly credentials = new CredentialsCache();
   state: UsageState = { refreshing: false };
 
   constructor(private readonly version: string) {
@@ -97,7 +99,7 @@ export class UsagePoller implements vscode.Disposable {
   private async poll(): Promise<void> {
     const now = Date.now();
     try {
-      const creds = await readCredentials();
+      const creds = await this.credentials.get(now);
       if (!creds) throw new UsageError("no-credentials", "No credentials.");
       const plan = creds.subscriptionType
         ? creds.rateLimitTier
@@ -112,6 +114,7 @@ export class UsagePoller implements vscode.Disposable {
       this.state = { snapshot, plan, refreshing: false };
     } catch (err) {
       this.failures++;
+      if (err instanceof UsageError && err.unauthorized) this.credentials.invalidate();
       const reason: UsageErrorReason = err instanceof UsageError ? err.reason : "network";
       const message = err instanceof Error ? err.message : String(err);
       this.state = { ...this.state, error: { reason, message, at: Date.now() }, refreshing: false };

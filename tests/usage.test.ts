@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCredentials } from "../src/extension/usage/credentials";
+import { CredentialsCache, parseCredentials, type Credentials } from "../src/extension/usage/credentials";
 import {
   formatAgo,
   formatResetAt,
@@ -197,5 +197,46 @@ describe("usage formatting", () => {
     expect(severity({ fetchedAt, fiveHour: { pct: 75 }, scoped: [] })).toBe("warning");
     expect(severity({ fetchedAt, fiveHour: { pct: 90 }, scoped: [] })).toBe("error");
     expect(severity({ fetchedAt, scoped: [] })).toBeUndefined();
+  });
+});
+
+describe("credentials cache", () => {
+  const token = (accessToken: string, expiresAt?: number): Credentials => ({ accessToken, expiresAt });
+
+  it("reads once per token lifetime, again near expiry, and again after the server rejects it", async () => {
+    const t0 = Date.parse("2026-10-15T10:00:00Z");
+    const hour = 60 * 60 * 1000;
+    let reads = 0;
+    const cache = new CredentialsCache(async () => token(`tok-${++reads}`, t0 + hour));
+    // Several polls inside the lifetime share one read.
+    expect((await cache.get(t0))?.accessToken).toBe("tok-1");
+    expect((await cache.get(t0 + 10 * 60_000))?.accessToken).toBe("tok-1");
+    expect((await cache.get(t0 + 58 * 60_000))?.accessToken).toBe("tok-1");
+    expect(reads).toBe(1);
+    // Sixty seconds before expiry the next poll reads again.
+    expect((await cache.get(t0 + 59 * 60_000))?.accessToken).toBe("tok-2");
+    expect(reads).toBe(2);
+    // A 401 or 403 drops the token, so the next poll reads again even though it looked fresh.
+    const rejected = new UsageError("http", "HTTP 401.", 401);
+    expect(rejected.unauthorized).toBe(true);
+    expect(new UsageError("http", "HTTP 500.", 500).unauthorized).toBe(false);
+    if (rejected.unauthorized) cache.invalidate();
+    expect((await cache.get(t0 + 59 * 60_000))?.accessToken).toBe("tok-3");
+    expect(reads).toBe(3);
+  });
+
+  it("keeps a token with no expiry until invalidated and retries when nothing was found", async () => {
+    let reads = 0;
+    let found = false;
+    const cache = new CredentialsCache(async () => (found ? token(`tok-${++reads}`) : (reads++, undefined)));
+    expect(await cache.get(0)).toBeUndefined();
+    expect(await cache.get(1)).toBeUndefined();
+    expect(reads).toBe(2);
+    found = true;
+    expect((await cache.get(2))?.accessToken).toBe("tok-3");
+    expect((await cache.get(Number.MAX_SAFE_INTEGER))?.accessToken).toBe("tok-3");
+    expect(reads).toBe(3);
+    cache.invalidate();
+    expect((await cache.get(3))?.accessToken).toBe("tok-4");
   });
 });
