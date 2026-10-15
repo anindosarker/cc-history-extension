@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { getSortBy } from "./config";
@@ -6,7 +8,16 @@ import { activityMinute, activityOf, type ProjectGroup } from "./indexScan";
 import { STATUS_LABEL } from "./liveStatus";
 import { projectUri, statusUri, type SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
-import { buildTreeModel, DIVIDER_LABEL, pinCurrentProjects, sortSessions, type TreeRow } from "./treeModel";
+import {
+  buildTreeModel,
+  DIVIDER_LABEL,
+  DIVIDER_RULE,
+  DIVIDER_TOOLTIP,
+  pinCurrentProjects,
+  sortSessions,
+  type PinOptions,
+  type TreeRow,
+} from "./treeModel";
 import { sessionTooltipLines } from "./treeTooltip";
 
 const REFRESH_DEBOUNCE_MS = 3000;
@@ -26,6 +37,17 @@ export class SessionNode {
 export class DividerNode {}
 
 export type TreeNode = ProjectNode | SessionNode | DividerNode;
+
+/** A project that contains a workspace folder is pinned only when it is a repository root. */
+const PIN_OPTIONS: PinOptions = {
+  isRepoRoot: (p) => {
+    try {
+      return fs.existsSync(path.join(p, ".git"));
+    } catch {
+      return false;
+    }
+  },
+};
 
 /** Paths of the folders open in this window, as the tree compares them against project cwds. */
 export function workspaceFolderPaths(): string[] {
@@ -71,7 +93,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private computeSignature(): string {
     const projects = this.indexer.projects;
-    const pinned = pinCurrentProjects(projects, workspaceFolderPaths())
+    const pinned = pinCurrentProjects(projects, workspaceFolderPaths(), PIN_OPTIONS)
       .current.map((g) => g.cwd)
       .join(",");
     const body = projects
@@ -95,7 +117,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   /** The root rows as the tree shows them: current projects, divider, other projects. */
   rootRows(): TreeRow[] {
-    return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy());
+    return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy(), PIN_OPTIONS);
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
@@ -112,10 +134,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
     if (element instanceof DividerNode) {
+      // A thin rule: empty label, the dashes as muted description, no icon, nothing to click.
       const item = new vscode.TreeItem(DIVIDER_LABEL, vscode.TreeItemCollapsibleState.None);
       item.id = "divider";
-      item.tooltip = "Projects outside the current workspace";
-      item.iconPath = new vscode.ThemeIcon("dash");
+      item.description = DIVIDER_RULE;
+      item.tooltip = DIVIDER_TOOLTIP;
       item.contextValue = "divider";
       return item;
     }

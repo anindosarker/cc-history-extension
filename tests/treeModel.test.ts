@@ -3,6 +3,7 @@ import { groupByProject, type ProjectGroup } from "../src/extension/indexScan";
 import {
   buildTreeModel,
   DIVIDER_LABEL,
+  DIVIDER_RULE,
   isCurrentProject,
   normalizeSortBy,
   pinCurrentProjects,
@@ -47,8 +48,28 @@ describe("pinCurrentProjects", () => {
     expect(isCurrentProject(ws + "/packages/web", [ws])).toBe(true);
   });
 
-  it("treats a workspace folder inside the project cwd as current (monorepo opened at a subfolder)", () => {
-    expect(isCurrentProject("/Users/me/Work", [ws])).toBe(true);
+  it("treats a workspace folder inside the project cwd as current only when the cwd is a repository root", () => {
+    const repo = { isRepoRoot: (p: string) => p === "/Users/me/Work/mono", homeDir: "/Users/me" };
+    expect(isCurrentProject("/Users/me/Work/mono", ["/Users/me/Work/mono/packages/web"], repo)).toBe(true);
+    // An ancestor without a .git entry is just a folder that happens to contain the workspace.
+    expect(isCurrentProject("/Users/me/Work", [ws], repo)).toBe(false);
+    // Without an isRepoRoot check no ancestor is pinned at all.
+    expect(isCurrentProject("/Users/me/Work/mono", ["/Users/me/Work/mono/packages/web"])).toBe(false);
+  });
+
+  it("never pins the home folder, the root, or a direct child of /, /Users, /home or /Volumes", () => {
+    const always = { isRepoRoot: () => true, homeDir: "/Users/me" };
+    expect(isCurrentProject("/Users/me", [ws], always)).toBe(false);
+    expect(isCurrentProject("/Users", [ws], always)).toBe(false);
+    expect(isCurrentProject("/", [ws], always)).toBe(false);
+    expect(isCurrentProject("/home/me", ["/home/me/app"], { isRepoRoot: () => true, homeDir: "/root" })).toBe(false);
+    expect(isCurrentProject("/Volumes/Data", ["/Volumes/Data/app"], always)).toBe(false);
+    expect(isCurrentProject("/opt", ["/opt/app"], always)).toBe(false);
+    // Two levels down with a .git entry is fine.
+    expect(isCurrentProject("/Volumes/Data/repo", ["/Volumes/Data/repo/app"], always)).toBe(true);
+    // The equal and nested rules do not need a repository root.
+    expect(isCurrentProject("/Users/me", ["/Users/me"], { isRepoRoot: () => false, homeDir: "/Users/me" })).toBe(true);
+    expect(isCurrentProject(ws + "/sub", [ws], { isRepoRoot: () => false })).toBe(true);
   });
 
   it("counts git worktrees checked out under the workspace", () => {
@@ -147,17 +168,23 @@ describe("buildTreeModel", () => {
   ]);
   const projects = [other1, wt, app, other2];
 
-  const labels = (rows: TreeRow[]) => rows.map((r) => (r.kind === "divider" ? DIVIDER_LABEL : r.group.name));
+  const DIVIDER = "<divider>";
+  const labels = (rows: TreeRow[]) => rows.map((r) => (r.kind === "divider" ? DIVIDER : r.group.name));
+
+  it("renders the divider as a thin rule: empty label and forty box-drawing dashes", () => {
+    expect(DIVIDER_LABEL).toBe("");
+    expect(DIVIDER_RULE).toBe("\u2500".repeat(40));
+  });
 
   it("pins current projects first, then the divider, then the rest, each sorted by activity", () => {
     const rows = buildTreeModel(projects, [ws], "activity");
-    expect(labels(rows)).toEqual(["feat", "app", DIVIDER_LABEL, "one", "two"]);
+    expect(labels(rows)).toEqual(["feat", "app", DIVIDER, "one", "two"]);
     expect(rows.map((r) => r.kind === "project" && r.current)).toEqual([true, true, false, false, false]);
   });
 
   it("applies the same sort inside the pinned set and the rest", () => {
-    expect(labels(buildTreeModel(projects, [ws], "name"))).toEqual(["app", "feat", DIVIDER_LABEL, "one", "two"]);
-    expect(labels(buildTreeModel(projects, [ws], "sessions"))).toEqual(["app", "feat", DIVIDER_LABEL, "two", "one"]);
+    expect(labels(buildTreeModel(projects, [ws], "name"))).toEqual(["app", "feat", DIVIDER, "one", "two"]);
+    expect(labels(buildTreeModel(projects, [ws], "sessions"))).toEqual(["app", "feat", DIVIDER, "two", "one"]);
   });
 
   it("shows no divider and pins nothing when no project is current", () => {

@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import type { SessionMeta } from "../shared/types";
 import { activityMinute, type ProjectGroup } from "./indexScan";
 
@@ -28,7 +29,10 @@ export function normalizeSortBy(value: unknown): SortBy {
 /** A row of the Sessions tree root: a project, or the divider between current and other projects. */
 export type TreeRow = { kind: "project"; group: ProjectGroup; current: boolean } | { kind: "divider" };
 
-export const DIVIDER_LABEL = "Other projects";
+/** The divider between current and other projects is a thin rule: an empty label and a run of box-drawing dashes. */
+export const DIVIDER_LABEL = "";
+export const DIVIDER_RULE = "\u2500".repeat(40);
+export const DIVIDER_TOOLTIP = "Projects outside the current workspace";
 
 /**
  * Forward slashes, no trailing slash, and case-folded for Windows drive paths so a cwd
@@ -47,16 +51,40 @@ function isInside(child: string, parent: string): boolean {
   return child.startsWith(parent + "/");
 }
 
+export interface PinOptions {
+  /** Whether a path is a repository root (holds a .git entry). Without it, no ancestor project is pinned. */
+  isRepoRoot?: (path: string) => boolean;
+  /** The user's home folder; defaults to the OS home directory. */
+  homeDir?: string;
+}
+
+/** Folders whose direct children are user or volume roots, never a project that owns a workspace. */
+const ROOT_PARENTS = new Set(["/", "/users", "/home", "/volumes"]);
+
+/**
+ * Whether a project that contains a workspace folder may count as current: not the home folder,
+ * not the filesystem root or a direct child of it (or of /Users, /home, /Volumes), and a repository root.
+ */
+function ancestorMayPin(cwd: string, normalized: string, opts: PinOptions): boolean {
+  if (normalized === "/") return false;
+  if (normalized === normalizePath(opts.homeDir ?? os.homedir())) return false;
+  const parent = normalized.slice(0, normalized.lastIndexOf("/")) || "/";
+  if (ROOT_PARENTS.has(parent.toLowerCase())) return false;
+  return opts.isRepoRoot?.(cwd) === true;
+}
+
 /**
  * A project belongs to the current window when its cwd equals or is inside a workspace
  * folder (git worktrees checked out under the folder included), or when a workspace folder
- * is inside the project cwd (a monorepo opened at a subfolder).
+ * is inside the project cwd (a monorepo opened at a subfolder) and the cwd is a repository root
+ * rather than the home folder or another ancestor of everything.
  */
-export function isCurrentProject(cwd: string, workspaceFolderPaths: readonly string[]): boolean {
+export function isCurrentProject(cwd: string, workspaceFolderPaths: readonly string[], opts: PinOptions = {}): boolean {
   const c = normalizePath(cwd);
   return workspaceFolderPaths.some((f) => {
     const w = normalizePath(f);
-    return isInside(c, w) || isInside(w, c);
+    if (isInside(c, w)) return true;
+    return c !== w && isInside(w, c) && ancestorMayPin(cwd, c, opts);
   });
 }
 
@@ -64,10 +92,11 @@ export function isCurrentProject(cwd: string, workspaceFolderPaths: readonly str
 export function pinCurrentProjects<T extends { cwd: string }>(
   projects: readonly T[],
   workspaceFolderPaths: readonly string[],
+  opts: PinOptions = {},
 ): { current: T[]; other: T[] } {
   const current: T[] = [];
   const other: T[] = [];
-  for (const p of projects) (isCurrentProject(p.cwd, workspaceFolderPaths) ? current : other).push(p);
+  for (const p of projects) (isCurrentProject(p.cwd, workspaceFolderPaths, opts) ? current : other).push(p);
   return { current, other };
 }
 
@@ -125,8 +154,9 @@ export function buildTreeModel(
   projects: readonly ProjectGroup[],
   workspaceFolderPaths: readonly string[],
   sortBy: SortBy,
+  opts: PinOptions = {},
 ): TreeRow[] {
-  const { current, other } = pinCurrentProjects(projects, workspaceFolderPaths);
+  const { current, other } = pinCurrentProjects(projects, workspaceFolderPaths, opts);
   if (current.length === 0) return sortProjects(projects, sortBy).map((group) => ({ kind: "project", group, current: false }));
   const rows: TreeRow[] = sortProjects(current, sortBy).map((group) => ({ kind: "project", group, current: true }));
   if (other.length > 0) {
