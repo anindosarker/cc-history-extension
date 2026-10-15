@@ -9,19 +9,25 @@ on:
       tag:
         description: "Existing tag to publish, for example v0.4.0"
         required: true
-      skip_marketplace:
-        description: "Skip the Visual Studio Marketplace step (for example to publish only to Open VSX)"
-        type: boolean
-        default: false
+      target:
+        description: "What to publish"
+        type: choice
+        default: all
+        options:
+          - all
+          - marketplace
+          - openvsx
+          - release
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    env:
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,24 +53,77 @@ jobs:
 
       - name: Check tag matches package.json version
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION="$(node -p "require('./package.json').version")"
           test "$TAG" = "v$VERSION" || { echo "Tag $TAG does not match version $VERSION"; exit 1; }
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: cc-history-*.vsix
+          if-no-files-found: error
+          retention-days: 7
+
+  marketplace:
+    needs: build
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'marketplace' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Publish to Visual Studio Marketplace
-        if: ${{ github.event.inputs.skip_marketplace != 'true' }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: pnpm exec vsce publish --no-dependencies --packagePath cc-history-*.vsix
+        run: npx --yes @vscode/vsce@4 publish --no-dependencies --packagePath cc-history-*.vsix
 
-      - name: Publish to Open VSX
+  openvsx:
+    needs: build
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'openvsx' }}
+    runs-on: ubuntu-latest
+    env:
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publish to Open VSX (3 attempts)
         if: ${{ env.OVSX_PAT != '' }}
-        run: pnpm dlx ovsx publish cc-history-*.vsix -p "$OVSX_PAT"
+        run: |
+          for attempt in 1 2 3; do
+            if npx --yes ovsx@0.10 publish cc-history-*.vsix -p "$OVSX_PAT"; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 120
+          done
+          exit 1
 
-      - name: Attach vsix to the GitHub release
+  release:
+    needs: build
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'release' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
+      - name: Create the GitHub release and attach the vsix
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "${TAG#v}" --generate-notes
           gh release upload "$TAG" cc-history-*.vsix --clobber
