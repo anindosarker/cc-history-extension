@@ -27,14 +27,14 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
     { value: "assistant", label: "Assistant only", icon: <Bot /> },
   ];
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-background">
-      <div className="relative flex-1 max-w-[520px]">
+    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-background min-w-0 shrink-0">
+      <div className="relative flex-1 min-w-[4.5rem] max-w-[520px]">
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
         <Input
           ref={ref}
           value={query}
           placeholder="Search messages (Enter: next, Shift+Enter: previous, Esc: clear)"
-          className="pl-7 pr-7"
+          className="pl-7 pr-7 min-w-0"
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -63,13 +63,13 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
           {matchCount === 0 ? "0 results" : `${current + 1} / ${matchCount}`}
         </span>
       )}
-      <Button variant="ghost" size="icon" onClick={onPrev} disabled={matchCount === 0} aria-label="Previous match">
+      <Button variant="ghost" size="icon" className="shrink-0" onClick={onPrev} disabled={matchCount === 0} aria-label="Previous match">
         <ChevronUp />
       </Button>
-      <Button variant="ghost" size="icon" onClick={onNext} disabled={matchCount === 0} aria-label="Next match">
+      <Button variant="ghost" size="icon" className="shrink-0" onClick={onNext} disabled={matchCount === 0} aria-label="Next match">
         <ChevronDown />
       </Button>
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex items-center gap-1 shrink-0">
         <Toggle
           active={filters.showThinking}
           label={filters.showThinking ? "Hide thinking" : "Show thinking"}

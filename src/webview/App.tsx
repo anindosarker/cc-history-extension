@@ -93,8 +93,8 @@ export function App() {
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-full min-h-0">
         <Header meta={meta} turnCount={total} openAt={openAt} onOpenAtChange={changeOpenAt} />
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "messages" | "files")} className="px-4 shrink-0">
-          <TabsList>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "messages" | "files")} className="px-4 shrink-0 min-w-0 overflow-x-auto overflow-y-hidden">
+          <TabsList className="flex-nowrap">
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="files">Files changed ({files.length})</TabsTrigger>
           </TabsList>

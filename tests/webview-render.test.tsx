@@ -116,4 +116,31 @@ describe("webview components render on the server", () => {
     expect(html).toMatch(/aria-pressed="true"[^>]*>New</);
     expect(html).toMatch(/aria-pressed="false"[^>]*>Old</);
   });
+
+  it("truncates a long title and keeps the full text in a title attribute", () => {
+    const title = "Mouse wheel zoom setting investigation and follow-up fixes";
+    expect(title.length).toBeGreaterThanOrEqual(60);
+    const meta: SessionMeta = {
+      sessionId: "sess",
+      filePath: "/f.jsonl",
+      cwd: "/a/b",
+      projectName: "b",
+      title,
+      titleSource: "ai",
+      messageCount: 2,
+      filesChanged: 0,
+      mtime: 0,
+      size: 0,
+    };
+    const html = renderToString(
+      <TooltipProvider>
+        <Header meta={meta} turnCount={2} openAt="oldest" onOpenAtChange={() => {}} />
+      </TooltipProvider>,
+    );
+    const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
+    expect(h1).toContain("truncate");
+    expect(h1).toContain("min-w-0");
+    expect(h1).toContain(`title="${title}"`);
+    expect(html).toContain(`>${title}</h1>`);
+  });
 });
