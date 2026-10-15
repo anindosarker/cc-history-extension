@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { OpenAt } from "@shared/openAt";
 import type { Turn } from "@shared/types";
 import { applyFilters, buildRows, findMatches, type Filters } from "@/lib/search";
 import { MessageList } from "./MessageList";
-import { SearchBar } from "./SearchBar";
+import { DEFAULT_FILTERS, SearchBar } from "./SearchBar";
 
 interface Props {
   turns: Turn[];
@@ -11,11 +12,13 @@ interface Props {
   active: boolean;
   openAt: OpenAt;
   jumpKey: number;
+  /** Where to render the search bar; without one it sits in its own row above the list. */
+  searchSlot?: HTMLElement | null;
 }
 
-export function MessagesView({ turns, loadingMore, active, openAt, jumpKey }: Props) {
+export function MessagesView({ turns, loadingMore, active, openAt, jumpKey, searchSlot }: Props) {
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<Filters>({ role: "all", showThinking: true, showTools: true });
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [cur, setCur] = useState(0);
   const [scrollKey, setScrollKey] = useState(0);
   // Explicit open/closed choices per "Worked for" fold; kept for as long as the panel lives.
@@ -79,19 +82,27 @@ export function MessagesView({ turns, loadingMore, active, openAt, jumpKey }: Pr
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
 
+  const bar = (
+    <SearchBar
+      ref={inputRef}
+      query={query}
+      onQueryChange={setQuery}
+      matchCount={matches.length}
+      current={Math.min(cur, Math.max(0, matches.length - 1))}
+      onNext={() => goto(1)}
+      onPrev={() => goto(-1)}
+      filters={filters}
+      onFiltersChange={setFilters}
+    />
+  );
+
   return (
     <div className="flex flex-col h-full min-h-0">
-      <SearchBar
-        ref={inputRef}
-        query={query}
-        onQueryChange={setQuery}
-        matchCount={matches.length}
-        current={Math.min(cur, Math.max(0, matches.length - 1))}
-        onNext={() => goto(1)}
-        onPrev={() => goto(-1)}
-        filters={filters}
-        onFiltersChange={setFilters}
-      />
+      {searchSlot ? (
+        createPortal(bar, searchSlot)
+      ) : (
+        <div className="flex items-center px-3 py-1.5 border-b border-border bg-background min-w-0 shrink-0">{bar}</div>
+      )}
       <MessageList
         rows={rows}
         rowOf={rowOf}

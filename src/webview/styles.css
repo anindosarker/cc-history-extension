@@ -312,6 +312,19 @@
   max-width: 100%;
 }
 
+/* Search field: when the input gets very narrow the counter goes, leaving the arrows and the clear button. */
+.search-field {
+  container-type: inline-size;
+}
+@container (max-width: 240px) {
+  .search-count {
+    display: none;
+  }
+  .search-field .search-input {
+    padding-right: 4.5rem;
+  }
+}
+
 .mono-pre {
   font-family: var(--font-mono);
   font-size: var(--vscode-editor-font-size, 12px);

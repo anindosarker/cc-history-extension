@@ -14,6 +14,8 @@ export type WebviewToHost =
   /** Ask for file changes across the main transcript and every subagent transcript. */
   | { type: "loadFiles" }
   | { type: "resume" }
+  /** Open the usage panel (runs the ccHistory.openUsage command). */
+  | { type: "openUsage" }
   | { type: "setOpenAt"; value: OpenAt }
   | { type: "copyText"; text: string };
 

@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
+import { nearBottomRight, scrollButtonsFor, type ScrollButtons } from "@/lib/scrollButtons";
 import type { Match, Row } from "@/lib/search";
+import { useContainerWidth } from "@/lib/useContainerWidth";
+import { cn } from "@/lib/utils";
 import { DateRow } from "./DateRow";
 import { FoldRow } from "./FoldRow";
 import { TurnRow } from "./TurnRow";
@@ -24,6 +28,12 @@ interface Props {
 /** How long to keep nudging toward the bottom while rows are still being measured. */
 const SETTLE_ATTEMPTS = 40;
 const SETTLE_INTERVAL_MS = 32;
+/** How long the scroll buttons stay after the last scroll event. */
+const SCROLL_LINGER_MS = 1500;
+/** Longest we wait for a smooth scroll to finish before the settle loop takes over. */
+const SMOOTH_FALLBACK_MS = 700;
+/** From this list width on, the buttons sit in the right gutter outside the 960px content column. */
+const GUTTER_WIDTH = 1040;
 
 export function MessageList({
   rows,
@@ -57,6 +67,45 @@ export function MessageList({
   rowOfRef.current = rowOf;
   const cancelJump = useRef<(() => void) | undefined>(undefined);
   const initialJumpDone = useRef(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const width = useContainerWidth(wrapRef);
+
+  // Scroll buttons: which edges are reachable, and whether the user is scrolling or near the corner.
+  const [edges, setEdges] = useState<ScrollButtons>({ up: false, down: false });
+  const [scrolling, setScrolling] = useState(false);
+  const [nearCorner, setNearCorner] = useState(false);
+  const lingerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const measureEdges = useCallback(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const next = scrollButtonsFor(el.scrollTop, el.scrollHeight, el.clientHeight);
+    setEdges((cur) => (cur.up === next.up && cur.down === next.down ? cur : next));
+  }, []);
+
+  const onScroll = useCallback(() => {
+    measureEdges();
+    setScrolling(true);
+    if (lingerTimer.current) clearTimeout(lingerTimer.current);
+    lingerTimer.current = setTimeout(() => setScrolling(false), SCROLL_LINGER_MS);
+  }, [measureEdges]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const el = parentRef.current;
+    if (!el) return;
+    setNearCorner(nearBottomRight(e.clientX, e.clientY, el.getBoundingClientRect()));
+  }, []);
+
+  // Edges change as rows get measured and as the list grows, not only on scroll.
+  useEffect(() => {
+    measureEdges();
+  });
+  useEffect(
+    () => () => {
+      if (lingerTimer.current) clearTimeout(lingerTimer.current);
+    },
+    [],
+  );
 
   /**
    * Scroll to the top or bottom. The bottom case re-runs until the scroll position stops
@@ -97,6 +146,41 @@ export function MessageList({
     step();
   }, []);
 
+  /** Smooth version for the buttons and Home/End; the bottom hands over to the settle loop once the glide ends. */
+  const glideTo = useCallback(
+    (edge: "top" | "bottom") => {
+      const el = parentRef.current;
+      if (!el) return;
+      cancelJump.current?.();
+      if (edge === "top") {
+        el.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        el.removeEventListener("scrollend", finish);
+        jumpTo("bottom");
+      };
+      el.addEventListener("scrollend", finish, { once: true });
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      setTimeout(finish, SMOOTH_FALLBACK_MS);
+    },
+    [jumpTo],
+  );
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== "Home" && e.key !== "End") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      glideTo(e.key === "Home" ? "top" : "bottom");
+    },
+    [glideTo],
+  );
+
   // Initial position once every turn has arrived.
   useEffect(() => {
     if (loadingMore || rows.length === 0 || initialJumpDone.current) return;
@@ -131,46 +215,107 @@ export function MessageList({
   useEffect(() => () => cancelJump.current?.(), []);
 
   const virtualItems = virtualizer.getVirtualItems();
+  const showButtons = (edges.up || edges.down) && (scrolling || nearCorner);
+  const inGutter = width !== undefined && width >= GUTTER_WIDTH;
   return (
-    <div ref={parentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-thin">
-      {rows.length === 0 ? (
-        <div className="p-6 text-muted-foreground text-center">No messages match the current filters.</div>
-      ) : (
-        <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
-          {virtualItems.map((vi) => {
-            const row = rows[vi.index];
-            const isCurrentTurn = row.kind === "turn" && current?.turnIndex === row.visibleIndex;
-            return (
-              <div
-                key={vi.key}
-                data-index={vi.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${vi.start}px)`,
-                }}
-              >
-                {row.kind === "date" ? (
-                  <DateRow row={row} />
-                ) : row.kind === "fold" ? (
-                  <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} />
-                ) : (
-                  <TurnRow
-                    item={row.item}
-                    query={query}
-                    currentBlock={isCurrentTurn && current ? current.blockIndex : -1}
-                    currentOcc={isCurrentTurn && current ? current.occ : -1}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {loadingMore && <div className="p-3 text-center text-muted-foreground">Loading more messages…</div>}
+    <div
+      ref={wrapRef}
+      className="relative flex-1 min-h-0 flex flex-col"
+      onPointerMove={onPointerMove}
+      onPointerLeave={() => setNearCorner(false)}
+    >
+      <div
+        ref={parentRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-thin outline-none"
+        tabIndex={0}
+        onScroll={onScroll}
+        onKeyDown={onKeyDown}
+      >
+        {rows.length === 0 ? (
+          <div className="p-6 text-muted-foreground text-center">
+            No messages match the current filters.
+          </div>
+        ) : (
+          <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
+            {virtualItems.map((vi) => {
+              const row = rows[vi.index];
+              const isCurrentTurn = row.kind === "turn" && current?.turnIndex === row.visibleIndex;
+              return (
+                <div
+                  key={vi.key}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${vi.start}px)`,
+                  }}
+                >
+                  {row.kind === "date" ? (
+                    <DateRow row={row} />
+                  ) : row.kind === "fold" ? (
+                    <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} />
+                  ) : (
+                    <TurnRow
+                      item={row.item}
+                      query={query}
+                      currentBlock={isCurrentTurn && current ? current.blockIndex : -1}
+                      currentOcc={isCurrentTurn && current ? current.occ : -1}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {loadingMore && (
+          <div className="p-3 text-center text-muted-foreground">Loading more messages…</div>
+        )}
+      </div>
+      <div
+        className={cn(
+          "scroll-buttons absolute bottom-3 right-4 flex flex-col gap-1 transition-opacity duration-200",
+          showButtons ? (inGutter ? "opacity-100" : "opacity-70") : "opacity-0 pointer-events-none",
+        )}
+        data-visible={showButtons ? "true" : "false"}
+        aria-hidden={!showButtons}
+      >
+        {edges.up && (
+          <ScrollButton label="Scroll to top" onClick={() => glideTo("top")}>
+            <ArrowUp />
+          </ScrollButton>
+        )}
+        {edges.down && (
+          <ScrollButton label="Scroll to bottom" onClick={() => glideTo("bottom")}>
+            <ArrowDown />
+          </ScrollButton>
+        )}
+      </div>
     </div>
+  );
+}
+
+function ScrollButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="scroll-button size-7 inline-flex items-center justify-center rounded-full border bg-background text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer [&_svg]:size-3.5"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      tabIndex={-1}
+    >
+      {children}
+    </button>
   );
 }

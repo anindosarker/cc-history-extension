@@ -3,8 +3,16 @@ import { renderToString } from "react-dom/server";
 import { TurnRow } from "@/components/TurnRow";
 import { FoldRow } from "@/components/FoldRow";
 import { FilesTab } from "@/components/FilesTab";
-import { Header } from "@/components/Header";
-import { SearchBar } from "@/components/SearchBar";
+import {
+  Header,
+  OPEN_AT_OPTIONS,
+  iconTabsFor,
+  menuItems,
+  metaLayoutFor,
+  titleTooltipLines,
+} from "@/components/Header";
+import { DEFAULT_FILTERS, SearchBar, filtersActive } from "@/components/SearchBar";
+import { nearBottomRight, scrollButtonsFor } from "@/lib/scrollButtons";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
 import type { Block, FileChange, SessionMeta, Turn } from "@shared/types";
@@ -344,7 +352,7 @@ describe("webview components render on the server", () => {
     expect(html).not.toContain("border-l-");
   });
 
-  it("renders the header, files tab and search bar", () => {
+  it("renders the header in two rows, the files tab and the search bar", () => {
     const files: FileChange[] = [
       { path: "/a/b/c.ts", hunks: [{ tool: "Edit", before: "x", after: "y\nz", added: 2, removed: 1 }], added: 2, removed: 1, partial: true },
     ];
@@ -365,7 +373,17 @@ describe("webview components render on the server", () => {
     };
     const html = renderToString(
       <TooltipProvider>
-        <Header meta={meta} turnCount={2} openAt="newest" onOpenAtChange={() => {}} />
+        <Header
+          meta={meta}
+          turnCount={2}
+          openAt="newest"
+          onOpenAtChange={() => {}}
+          tab="messages"
+          onTabChange={() => {}}
+          filesCount={1}
+          width={1000}
+          search={<span>SEARCH-SLOT</span>}
+        />
         <FilesTab files={files} />
         <SearchBar
           query="q"
@@ -381,12 +399,141 @@ describe("webview components render on the server", () => {
     );
     expect(html).toContain("c.ts");
     expect(html).toContain("partial");
+    // Row 1: title with the full tooltip, inline meta, icon-only Resume, "..." menu trigger.
+    const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
+    expect(h1).toContain("text-[16px]");
+    expect(h1).toMatch(/title="Title\nb\n2023-11-1[45] \d\d:\d\d\n15m\nmain\nsess"/);
+    expect(html).toMatch(/header-meta[^>]*>b · 2023-11-1[45] \d\d:\d\d · 2 messages</);
+    expect(html).toContain('aria-label="Resume"');
+    expect(html).toContain('aria-label="More actions"');
+    expect(html).not.toContain(">Save as .txt<");
+    expect(html).not.toContain('aria-pressed="true"');
+    // Row 2: text tabs and the search slot.
+    expect(html).toContain(">Messages</button>");
+    expect(html).toContain(">Files changed (1)</button>");
+    expect(html).toContain("SEARCH-SLOT");
+    // The counter and nav live inside the input's right end; the filters icon shows a dot.
     expect(html).toContain("2 / 3");
-    expect(html).toContain("15m");
-    expect(html).toContain("main");
-    // The Old | New toggle marks the persisted choice as pressed.
-    expect(html).toMatch(/aria-pressed="true"[^>]*>New</);
-    expect(html).toMatch(/aria-pressed="false"[^>]*>Old</);
+    expect(html).toMatch(/search-tools[^>]*>.*2 \/ 3.*aria-label="Previous match".*aria-label="Next match".*aria-label="Clear search"/s);
+    expect(html).toMatch(/filters-button[^>]*data-active="true"/);
+    expect(html).toContain("filters-dot");
+  });
+
+  it("drops the inline meta and turns tabs into icons as the header narrows", () => {
+    const meta: SessionMeta = {
+      sessionId: "sess",
+      filePath: "/f.jsonl",
+      cwd: "/a/b",
+      projectName: "b",
+      title: "Title",
+      titleSource: "ai",
+      messageCount: 7,
+      filesChanged: 0,
+      mtime: 0,
+      size: 0,
+      startedAt: 1_700_000_000_000,
+    };
+    const render = (width: number) =>
+      renderToString(
+        <TooltipProvider>
+          <Header
+            meta={meta}
+            turnCount={7}
+            openAt="oldest"
+            onOpenAtChange={() => {}}
+            tab="files"
+            onTabChange={() => {}}
+            filesCount={3}
+            width={width}
+          />
+        </TooltipProvider>,
+      );
+    expect(metaLayoutFor(undefined)).toBe("full");
+    expect(metaLayoutFor(760)).toBe("full");
+    expect(metaLayoutFor(759)).toBe("short");
+    expect(metaLayoutFor(520)).toBe("short");
+    expect(metaLayoutFor(519)).toBe("none");
+    expect(iconTabsFor(420)).toBe(false);
+    expect(iconTabsFor(419)).toBe(true);
+    const mid = render(600);
+    expect(mid).toMatch(/header-meta[^>]*>7 messages</);
+    expect(mid).toContain(">Messages</button>");
+    const narrow = render(400);
+    expect(narrow).not.toContain("header-meta");
+    expect(narrow).not.toContain(">Messages</button>");
+    expect(narrow).toMatch(/title="Messages"[^>]*>.*<span class="tabular-nums">7<\/span>/);
+    expect(narrow).toMatch(/title="Files changed"[^>]*>.*<span class="tabular-nums">3<\/span>/);
+    // The search slot is kept in the layout but hidden while the Files tab is active.
+    expect(narrow).toContain("invisible");
+  });
+
+  it("lists the menu items with the Open at radio pair and Show usage", () => {
+    const meta: SessionMeta = {
+      sessionId: "sess",
+      filePath: "/f.jsonl",
+      cwd: "/a/b",
+      projectName: "b",
+      title: "Title",
+      titleSource: "ai",
+      messageCount: 0,
+      filesChanged: 0,
+      mtime: 0,
+      size: 0,
+    };
+    const items = menuItems(meta);
+    expect(items.before.map((i) => i.label)).toEqual(["Save as .txt", "Copy transcript", "Reveal JSONL", "Copy session ID"]);
+    expect(items.after.map((i) => i.label)).toEqual(["Show usage"]);
+    expect(OPEN_AT_OPTIONS.map((o) => [o.value, o.label])).toEqual([
+      ["oldest", "Oldest"],
+      ["newest", "Newest"],
+    ]);
+    expect(titleTooltipLines(meta)).toEqual(["Title", "b", "sess"]);
+  });
+
+  it("marks the filters icon only when a filter is off its default", () => {
+    expect(filtersActive(DEFAULT_FILTERS)).toBe(false);
+    expect(filtersActive({ role: "all", showThinking: true, showTools: true })).toBe(false);
+    expect(filtersActive({ role: "user", showThinking: true, showTools: true })).toBe(true);
+    expect(filtersActive({ role: "all", showThinking: false, showTools: true })).toBe(true);
+    expect(filtersActive({ role: "all", showThinking: true, showTools: false })).toBe(true);
+    const plain = renderToString(
+      <TooltipProvider>
+        <SearchBar
+          query=""
+          onQueryChange={() => {}}
+          matchCount={0}
+          current={0}
+          onNext={() => {}}
+          onPrev={() => {}}
+          filters={DEFAULT_FILTERS}
+          onFiltersChange={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    expect(plain).toMatch(/filters-button[^>]*data-active="false"/);
+    expect(plain).not.toContain("filters-dot");
+    // No query, no counter or nav inside the input.
+    expect(plain).not.toContain("search-tools");
+  });
+
+  it("decides which scroll buttons to show from the scroll geometry", () => {
+    // Fits: nothing.
+    expect(scrollButtonsFor(0, 500, 600)).toEqual({ up: false, down: false });
+    expect(scrollButtonsFor(0, 600, 600)).toEqual({ up: false, down: false });
+    // At the top: only down.
+    expect(scrollButtonsFor(0, 2000, 600)).toEqual({ up: false, down: true });
+    expect(scrollButtonsFor(1, 2000, 600)).toEqual({ up: false, down: true });
+    // In between: both.
+    expect(scrollButtonsFor(700, 2000, 600)).toEqual({ up: true, down: true });
+    // At the end (allowing a fractional shortfall): only up.
+    expect(scrollButtonsFor(1400, 2000, 600)).toEqual({ up: true, down: false });
+    expect(scrollButtonsFor(1398.5, 2000, 600)).toEqual({ up: true, down: false });
+    // Pointer near the bottom-right corner of the viewport.
+    const rect = { right: 1000, bottom: 800 };
+    expect(nearBottomRight(990, 790, rect)).toBe(true);
+    expect(nearBottomRight(904, 704, rect)).toBe(true);
+    expect(nearBottomRight(900, 790, rect)).toBe(false);
+    expect(nearBottomRight(990, 700, rect)).toBe(false);
   });
 
   it("truncates a long title and keeps the full text in a title attribute", () => {
@@ -406,13 +553,21 @@ describe("webview components render on the server", () => {
     };
     const html = renderToString(
       <TooltipProvider>
-        <Header meta={meta} turnCount={2} openAt="oldest" onOpenAtChange={() => {}} />
+        <Header
+          meta={meta}
+          turnCount={2}
+          openAt="oldest"
+          onOpenAtChange={() => {}}
+          tab="messages"
+          onTabChange={() => {}}
+          filesCount={0}
+        />
       </TooltipProvider>,
     );
     const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
     expect(h1).toContain("truncate");
     expect(h1).toContain("min-w-0");
-    expect(h1).toContain(`title="${title}"`);
+    expect(h1).toContain(`title="${title}\nb\nsess"`);
     expect(html).toContain(`>${title}</h1>`);
   });
 });

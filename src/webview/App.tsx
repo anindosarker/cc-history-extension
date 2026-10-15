@@ -4,7 +4,6 @@ import { DEFAULT_OPEN_AT, type OpenAt } from "@shared/openAt";
 import type { HostToWebview } from "@shared/protocol";
 import type { FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentsContext } from "@/lib/agents";
 import { cn } from "@/lib/utils";
@@ -32,6 +31,8 @@ export function App() {
   const [agentView, setAgentView] = useState<string | undefined>(undefined);
   const [agentLoads, setAgentLoads] = useState<Record<string, AgentLoad>>({});
   const [filesScope, setFilesScope] = useState<FilesScope>("main");
+  // Row 2 of the header; the main messages view renders its search bar into it.
+  const [searchSlot, setSearchSlot] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<HostToWebview>) => {
@@ -182,17 +183,12 @@ export function App() {
             onOpenAtChange={changeOpenAt}
             agents={agents}
             onOpenAgent={openAgent}
+            tab={tab}
+            onTabChange={setTab}
+            filesCount={files.length}
+            search={<div ref={setSearchSlot} className="flex flex-1 min-w-0 items-center" />}
+            searchVisible={messagesActive && !agent}
           />
-          <Tabs
-            value={tab}
-            onValueChange={(v) => setTab(v as "messages" | "files")}
-            className="px-4 shrink-0 min-w-0 overflow-x-auto overflow-y-hidden"
-          >
-            <TabsList className="flex-nowrap">
-              <TabsTrigger value="messages">Messages</TabsTrigger>
-              <TabsTrigger value="files">Files changed ({files.length})</TabsTrigger>
-            </TabsList>
-          </Tabs>
           <div className={messagesActive ? "flex-1 min-h-0 relative" : "hidden"}>
             {/* The main list stays laid out underneath so its scroll position survives the agent view. */}
             <div className={cn("absolute inset-0 flex flex-col min-h-0", agent && "invisible pointer-events-none")}>
@@ -207,6 +203,7 @@ export function App() {
                   active={messagesActive && !agent}
                   openAt={openAt}
                   jumpKey={jumpKey}
+                  searchSlot={searchSlot}
                 />
               )}
             </div>

@@ -134,6 +134,9 @@ class SessionPanel {
       case "resume":
         resumeSession(this.meta);
         return;
+      case "openUsage":
+        await vscode.commands.executeCommand("ccHistory.openUsage");
+        return;
       case "setOpenAt":
         await setOpenAt(msg.value);
         this.post({ type: "openAt", value: getOpenAt() });
