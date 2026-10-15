@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7
+
+- Pin hover actions share one upright pin shape: outline to pin, filled to unpin.
+
 ## 0.4.6
 
 - Pinned project rows keep their folder icon; the hover action to unpin is a filled pin.

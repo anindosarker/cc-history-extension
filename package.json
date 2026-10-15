@@ -2,7 +2,7 @@
   "name": "cc-history",
   "displayName": "CC History",
   "description": "Claude Code session history: browse, search, diff and export every session. No time cutoff.",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "publisher": "anindosarker",
   "license": "MIT",
   "repository": {
@@ -128,7 +128,10 @@
         "command": "ccHistory.pinProject",
         "title": "Pin to top",
         "category": "Claude Code History",
-        "icon": "$(pin)"
+        "icon": {
+          "light": "media/pin-light.svg",
+          "dark": "media/pin-dark.svg"
+        }
       },
       {
         "command": "ccHistory.unpinProject",
