@@ -115,6 +115,11 @@
         "title": "Show Usage",
         "category": "Claude Code History",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "ccHistory.showUsageLog",
+        "title": "Show Usage Log",
+        "category": "Claude Code History"
       }
     ],
     "menus": {

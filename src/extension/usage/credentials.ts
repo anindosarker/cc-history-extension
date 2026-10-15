@@ -14,7 +14,11 @@ export interface Credentials {
   expiresAt?: number;
   subscriptionType?: string;
   rateLimitTier?: string;
+  /** Where the entry came from, for the log only. */
+  source?: CredentialSource;
 }
+
+export type CredentialSource = "keychain" | "file";
 
 export const KEYCHAIN_SERVICE = "Claude Code-credentials";
 const KEYCHAIN_TIMEOUT_MS = 5_000;
@@ -62,10 +66,37 @@ async function readFile(p: string): Promise<string | undefined> {
   }
 }
 
-/** macOS reads the Keychain entry Claude Code writes; elsewhere the credentials file. Both may be absent. */
-export async function readCredentials(platform = process.platform): Promise<Credentials | undefined> {
-  const raw = platform === "darwin" ? (await readKeychain()) ?? (await readFile(credentialsFilePath())) : await readFile(credentialsFilePath());
-  return raw ? parseCredentials(raw) : undefined;
+export interface CredentialSources {
+  keychain: () => Promise<string | undefined>;
+  file: () => Promise<string | undefined>;
+}
+
+const DEFAULT_SOURCES: CredentialSources = { keychain: readKeychain, file: () => readFile(credentialsFilePath()) };
+
+/** Of two entries, the one that expires later; an entry without an expiry loses to one with. */
+export function pickLaterCredentials(a: Credentials | undefined, b: Credentials | undefined): Credentials | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return (b.expiresAt ?? 0) > (a.expiresAt ?? 0) ? b : a;
+}
+
+function withSource(raw: string | undefined, source: CredentialSource): Credentials | undefined {
+  const c = raw ? parseCredentials(raw) : undefined;
+  return c ? { ...c, source } : undefined;
+}
+
+/**
+ * macOS reads the Keychain entry Claude Code writes and the credentials file, and keeps whichever
+ * expires later (Claude Code rotates one before the other); elsewhere only the file exists.
+ */
+export async function readCredentials(
+  platform = process.platform,
+  sources: CredentialSources = DEFAULT_SOURCES,
+): Promise<Credentials | undefined> {
+  const file = withSource(await sources.file(), "file");
+  if (platform !== "darwin") return file;
+  const keychain = withSource(await sources.keychain(), "keychain");
+  return pickLaterCredentials(keychain, file);
 }
 
 /** Reuse a read token until this close to its expiry, then read again. */
@@ -84,8 +115,8 @@ export class CredentialsCache {
   ) {}
 
   /** The cached credentials while they are fresh, otherwise a new read (which may still be absent). */
-  async get(now = Date.now()): Promise<Credentials | undefined> {
-    if (this.cached && this.fresh(this.cached, now)) return this.cached;
+  async get(now = Date.now(), opts: { fresh?: boolean } = {}): Promise<Credentials | undefined> {
+    if (!opts.fresh && this.cached && this.fresh(this.cached, now)) return this.cached;
     this.cached = await this.reader();
     return this.cached;
   }

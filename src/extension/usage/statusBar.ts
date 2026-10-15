@@ -1,14 +1,5 @@
 import * as vscode from "vscode";
-import {
-  colorDecision,
-  ERROR_REASON_TEXT,
-  formatAgo,
-  STATUS_ERROR_TEXT,
-  statusBarItemText,
-  tooltipLines,
-  type ColorLevel,
-  type ColorMode,
-} from "./format";
+import { statusModel, type ColorLevel, type ColorMode } from "./format";
 import type { UsagePoller, UsageState } from "./usagePoller";
 
 const TOOLTIP_TICK_MS = 15_000;
@@ -38,35 +29,16 @@ export class UsageStatusBar implements vscode.Disposable {
       return;
     }
     const now = Date.now();
+    const model = statusModel(state, settings, now);
     const md = new vscode.MarkdownString();
     md.supportThemeIcons = true;
-    if (state.error || !state.snapshot) {
-      this.item.text = state.refreshing && !state.error ? "$(sparkle) usage …" : STATUS_ERROR_TEXT;
-      this.applyColor(undefined, settings.colorMode);
-      if (state.error) {
-        md.appendMarkdown(`**Claude Code usage unavailable**\n\n${ERROR_REASON_TEXT[state.error.reason]}\n\n`);
-        if (state.error.reason === "http" || state.error.reason === "network") {
-          md.appendMarkdown(`${escapeMd(state.error.message)}\n\n`);
-        }
-        md.appendMarkdown(`Last attempt ${formatAgo(now - state.error.at)}.`);
-        if (state.snapshot) {
-          md.appendMarkdown("\n\nLast good reading:\n\n");
-          for (const line of tooltipLines(state.snapshot, { now, plan: state.plan })) md.appendMarkdown(`${escapeMd(line)}  \n`);
-        }
-      } else {
-        md.appendMarkdown("Fetching Claude Code usage…");
-      }
-      this.item.tooltip = md;
-      this.item.show();
-      return;
-    }
-    const snap = state.snapshot;
-    const color = colorDecision(snap, settings);
-    this.item.text = statusBarItemText(snap, settings);
-    this.applyColor(color.level, settings.colorMode);
-    md.appendMarkdown("**Claude Code usage**\n\n");
-    for (const line of tooltipLines(snap, { now, plan: state.plan, color })) md.appendMarkdown(`${escapeMd(line)}  \n`);
-    md.appendMarkdown("\nClick to open the usage panel.");
+    // Needed for the "Show log" command link.
+    md.isTrusted = true;
+    this.item.text = model.text;
+    this.applyColor(model.level, settings.colorMode);
+    md.appendMarkdown(state.snapshot ? "**Claude Code usage**\n\n" : "**Claude Code usage unavailable**\n\n");
+    for (const line of model.lines) md.appendMarkdown(`${escapeMd(line)}  \n`);
+    md.appendMarkdown("\nClick to open the usage panel. [Show log](command:ccHistory.showUsageLog)");
     this.item.tooltip = md;
     this.item.show();
   }

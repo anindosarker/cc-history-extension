@@ -22,7 +22,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const panels = new SessionPanelManager(context, diffs);
   const view = vscode.window.createTreeView("ccHistory.sessions", { treeDataProvider: tree, showCollapseAll: true });
   const version = String((context.extension.packageJSON as { version?: unknown }).version ?? "0.0.0");
-  const usage = new UsagePoller(version);
+  // Poll outcomes only: never a token or a header value.
+  const usageLog = vscode.window.createOutputChannel("Claude Code History");
+  const usage = new UsagePoller(version, (line) => usageLog.appendLine(line));
   const usageBar = new UsageStatusBar(usage);
   const usagePanel = new UsagePanelManager(context, usage, indexer);
 
@@ -48,6 +50,8 @@ export function activate(context: vscode.ExtensionContext): void {
     usage,
     usageBar,
     usagePanel,
+    usageLog,
+    vscode.commands.registerCommand("ccHistory.showUsageLog", () => usageLog.show(true)),
     vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh()),
     vscode.commands.registerCommand("ccHistory.openUsage", () => usagePanel.open()),
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),

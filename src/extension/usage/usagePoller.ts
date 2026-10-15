@@ -1,25 +1,11 @@
 import * as vscode from "vscode";
 import { CredentialsCache } from "./credentials";
 import { DEFAULT_DISPLAY_SETTINGS, type UsageDisplaySettings } from "./format";
-import { intervalMs, nextDelayMs } from "./schedule";
-import { fetchUsage, UsageError, type UsageErrorReason, type UsageSnapshot } from "./usageClient";
+import { PollEngine, type UsageFailure, type UsageState } from "./pollEngine";
+import { intervalMs } from "./schedule";
+import { fetchUsage } from "./usageClient";
 
-export interface UsageFailure {
-  reason: UsageErrorReason;
-  message: string;
-  at: number;
-}
-
-export interface UsageState {
-  /** Last successful snapshot, kept while errors come and go. */
-  snapshot?: UsageSnapshot;
-  /** Set after a failed poll; cleared by the next success. */
-  error?: UsageFailure;
-  /** Plan type and tier from the credentials, like "team (default_claude_max_5x)". */
-  plan?: string;
-  /** True while a poll is in flight. */
-  refreshing: boolean;
-}
+export type { UsageFailure, UsageState };
 
 export interface UsageSettings extends UsageDisplaySettings {
   enabled: boolean;
@@ -58,23 +44,33 @@ export function readUsageSettings(): UsageSettings {
 
 /**
  * Polls the usage endpoint on an interval. Pauses while the window is unfocused and refreshes as
- * soon as focus returns; consecutive failures back off exponentially up to ten minutes.
+ * soon as focus returns; the engine decides the delay after each attempt (see pollEngine).
  */
 export class UsagePoller implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<UsageState>();
   readonly onDidChange = this.changeEmitter.event;
   private readonly disposables: vscode.Disposable[] = [];
   private timer: NodeJS.Timeout | undefined;
-  private failures = 0;
   private inFlight: Promise<void> | undefined;
   private settings = readUsageSettings();
   private focused = vscode.window.state.focused;
   private disposed = false;
   // Token lives here only; re-read near expiry or after the server rejects it.
   private readonly credentials = new CredentialsCache();
-  state: UsageState = { refreshing: false };
+  private readonly engine: PollEngine;
+  private nextDelayMs = this.settings.intervalMs;
 
-  constructor(private readonly version: string) {
+  constructor(
+    version: string,
+    private readonly log: (line: string) => void = () => {},
+  ) {
+    this.engine = new PollEngine({
+      readCredentials: (now, opts) => this.credentials.get(now, opts),
+      invalidateCredentials: () => this.credentials.invalidate(),
+      fetchUsage: (token) => fetchUsage(token, { version }),
+      now: () => Date.now(),
+      log: (line) => this.log(line),
+    });
     this.disposables.push(
       vscode.window.onDidChangeWindowState((s) => {
         const was = this.focused;
@@ -91,7 +87,7 @@ export class UsagePoller implements vscode.Disposable {
           this.emit();
           return;
         }
-        this.failures = 0;
+        this.engine.reset();
         if (this.settings.enabled) void this.refresh();
         else {
           this.clearTimer();
@@ -105,6 +101,10 @@ export class UsagePoller implements vscode.Disposable {
     return this.settings;
   }
 
+  get state(): UsageState {
+    return this.engine.state;
+  }
+
   start(): void {
     if (this.settings.enabled) void this.refresh();
   }
@@ -114,46 +114,25 @@ export class UsagePoller implements vscode.Disposable {
     if (!this.settings.enabled || this.disposed) return Promise.resolve();
     if (this.inFlight) return this.inFlight;
     this.clearTimer();
-    this.state = { ...this.state, refreshing: true };
+    this.engine.state = { ...this.engine.state, refreshing: true };
     this.emit();
-    this.inFlight = this.poll().finally(() => {
-      this.inFlight = undefined;
-      this.schedule();
-    });
+    this.inFlight = this.engine
+      .pollOnce(this.settings.intervalMs)
+      .then((outcome) => {
+        this.nextDelayMs = outcome.delayMs;
+      })
+      .finally(() => {
+        this.inFlight = undefined;
+        this.emit();
+        this.schedule();
+      });
     return this.inFlight;
-  }
-
-  private async poll(): Promise<void> {
-    const now = Date.now();
-    try {
-      const creds = await this.credentials.get(now);
-      if (!creds) throw new UsageError("no-credentials", "No credentials.");
-      const plan = creds.subscriptionType
-        ? creds.rateLimitTier
-          ? `${creds.subscriptionType} (${creds.rateLimitTier})`
-          : creds.subscriptionType
-        : undefined;
-      if (creds.expiresAt !== undefined && creds.expiresAt <= now) {
-        throw new UsageError("token-expired", "Token expired.");
-      }
-      const snapshot = await fetchUsage(creds.accessToken, { version: this.version });
-      this.failures = 0;
-      this.state = { snapshot, plan, refreshing: false };
-    } catch (err) {
-      this.failures++;
-      if (err instanceof UsageError && err.unauthorized) this.credentials.invalidate();
-      const reason: UsageErrorReason = err instanceof UsageError ? err.reason : "network";
-      const message = err instanceof Error ? err.message : String(err);
-      this.state = { ...this.state, error: { reason, message, at: Date.now() }, refreshing: false };
-    }
-    this.emit();
   }
 
   private schedule(): void {
     this.clearTimer();
     if (this.disposed || !this.settings.enabled || !this.focused) return;
-    const delay = nextDelayMs(this.settings.intervalMs, this.failures);
-    this.timer = setTimeout(() => void this.refresh(), delay);
+    this.timer = setTimeout(() => void this.refresh(), this.nextDelayMs);
   }
 
   private clearTimer(): void {

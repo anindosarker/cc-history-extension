@@ -97,7 +97,7 @@ describe("usage view mapping", () => {
     const view = toUsageView(
       {
         snapshot: { fetchedAt: now - 60_000, fiveHour: { pct: 50 }, scoped: [] },
-        error: { reason: "network", message: "ECONNRESET", at: now },
+        error: { reason: "network", message: "ECONNRESET", at: now, since: now },
         plan: "team",
         refreshing: false,
       },

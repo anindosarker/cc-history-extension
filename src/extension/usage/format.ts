@@ -1,4 +1,5 @@
 import { ERROR_REASON_TEXT, formatAgo, formatResetAt, pct, relativeDuration } from "../../shared/usage";
+import type { UsageFailure, UsageState } from "./pollEngine";
 import type { ScopedLimit, UsageLimit, UsageSnapshot } from "./usageClient";
 
 export { ERROR_REASON_TEXT, formatAgo, formatResetAt, pct, relativeDuration };
@@ -139,4 +140,75 @@ export function tooltipLines(snap: UsageSnapshot, ctx: TooltipContext): string[]
 /** "warning" at 75%, "error" at 90% of the five-hour window; undefined below. */
 export function severity(snap: UsageSnapshot): ColorLevel | undefined {
   return colorDecision(snap, { ...DEFAULT_DISPLAY_SETTINGS, colorBy: "fiveHour" }).level;
+}
+
+/** A reading older than this many poll intervals is shown with the stale marker. */
+export const STALE_INTERVALS = 2;
+/** After this long without a valid token the tooltip asks for Claude Code to be used. */
+export const TOKEN_HINT_AFTER_MS = 10 * 60_000;
+export const TOKEN_HINT = "Open or use Claude Code to refresh its login";
+export const STALE_MARKER = " ~";
+
+export function isStale(fetchedAt: number, now: number, intervalMs: number): boolean {
+  return now - fetchedAt > STALE_INTERVALS * intervalMs;
+}
+
+/** Why the latest poll failed, in the words the tooltip uses. */
+export function failureText(error: UsageFailure): string {
+  switch (error.reason) {
+    case "token-expired":
+      return "Claude Code login token expired, waiting for Claude Code to refresh it";
+    case "no-credentials":
+      return "No Claude Code login found";
+    case "network":
+      return "Network error";
+    case "http":
+      return error.status !== undefined ? `HTTP ${error.status}` : "HTTP error";
+    case "parse":
+      return "Unexpected response";
+  }
+}
+
+export interface StatusModel {
+  text: string;
+  /** Tooltip lines, in order. */
+  lines: string[];
+  level: ColorLevel | undefined;
+  /** True when the text shows an old reading. */
+  stale: boolean;
+}
+
+/**
+ * What the status bar shows for a state: the last good values (with a stale marker while they are
+ * old) and a tooltip that leads with the failure when there is one. "usage ?" appears only when no
+ * reading has ever arrived this session.
+ */
+export function statusModel(state: UsageState, settings: UsageSettingsLike, now: number): StatusModel {
+  const { snapshot, error } = state;
+  if (!snapshot) {
+    const lines = error
+      ? [`Claude Code usage unavailable: ${failureText(error)}`, `Last attempt ${formatAgo(now - error.at)}`]
+      : ["Fetching Claude Code usage…"];
+    if (error && tokenHintDue(error, now)) lines.push(TOKEN_HINT);
+    return { text: state.refreshing && !error ? "$(sparkle) usage …" : STATUS_ERROR_TEXT, lines, level: undefined, stale: false };
+  }
+  const color = colorDecision(snapshot, settings);
+  const stale = isStale(snapshot.fetchedAt, now, settings.intervalMs);
+  const text = statusBarItemText(snapshot, settings) + (stale ? STALE_MARKER : "");
+  const lines: string[] = [];
+  if (error) {
+    lines.push(`Stale: last update ${formatAgo(now - snapshot.fetchedAt)}`);
+    lines.push(failureText(error));
+    if (tokenHintDue(error, now)) lines.push(TOKEN_HINT);
+  }
+  lines.push(...tooltipLines(snapshot, { now, plan: state.plan, color }));
+  return { text, lines, level: color.level, stale };
+}
+
+function tokenHintDue(error: UsageFailure, now: number): boolean {
+  return (error.reason === "token-expired" || error.reason === "no-credentials") && now - error.since > TOKEN_HINT_AFTER_MS;
+}
+
+export interface UsageSettingsLike extends UsageDisplaySettings {
+  intervalMs: number;
 }
