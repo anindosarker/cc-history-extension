@@ -1,5 +1,7 @@
 import { memo, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import type { FoldRow as FoldRowModel, Match, OpenAll } from "@/lib/search";
 import { formatWorkDuration } from "@/lib/search";
 import { runStatus } from "@/lib/toolStatus";
@@ -40,16 +42,17 @@ export const FoldRow = memo(function FoldRow({ row, query, current, onToggle, na
           >
             <ChevronRight className={cn("size-3 shrink-0 transition-transform", row.open && "rotate-90")} />
             <span className="shrink-0">{`Worked for ${formatWorkDuration(row.durationMs)}`}</span>
-            <span className="fold-rule h-px flex-1" aria-hidden="true" />
+            <Separator className="fold-rule flex-1 w-auto" />
           </button>
           <span className="tier-3 flex shrink-0 items-center gap-3 text-[11px]">
             {row.hasMatch && !row.open && <span className="shrink-0">(match)</span>}
             <span className="fold-count shrink-0" data-status={status}>
               {calls}
             </span>
-            <button
-              type="button"
-              className="fold-all shrink-0 cursor-pointer hover:underline"
+            <Button
+              variant="link"
+              size="sm"
+              className="fold-all h-auto shrink-0 px-0 text-[11px] text-current font-normal"
               onClick={toggleAll}
               title={
                 openAll.open
@@ -58,7 +61,7 @@ export const FoldRow = memo(function FoldRow({ row, query, current, onToggle, na
               }
             >
               {openAll.open ? "Collapse all" : "Expand all"}
-            </button>
+            </Button>
           </span>
         </div>
         {row.open && (

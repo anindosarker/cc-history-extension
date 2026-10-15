@@ -7,6 +7,7 @@ import { Markdown } from "@/components/Markdown";
 import {
   Header,
   OPEN_AT_OPTIONS,
+  folderActions,
   iconTabsFor,
   menuItems,
   metaLayoutFor,
@@ -120,7 +121,7 @@ describe("agent and system turns in filters", () => {
         ))}
       </TooltipProvider>,
     );
-    expect(html).toContain('Agent · <span class="agent-name">scripts-agent</span>');
+    expect(html).toMatch(/Agent · <span class="[^"]*agent-name[^"]*">scripts-agent<\/span>/);
     expect(html).toContain("agent-card");
     expect(html).toContain(">done<");
     expect(html).toContain("System · task notification");
@@ -177,7 +178,7 @@ describe("recap and notice turns", () => {
     const recap = html.slice(html.indexOf('data-turn-index="1"'), html.indexOf('data-turn-index="2"'));
     expect(recap).toContain("recap-card");
     expect(recap).toContain(">RECAP<");
-    expect(recap).toMatch(/title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"[^>]*>\d\d:\d\d</);
+    expect(recap).toMatch(/aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d\d:\d\d</);
     expect(recap).toContain("<strong>");
     expect(recap).toContain('<mark data-current="true">viewer</mark>');
     expect(recap).not.toContain("chat-bubble");
@@ -354,8 +355,9 @@ describe("colour accents", () => {
       tool("e", "Edit", { file_path: "/a.ts", old_string: "a\nb\n", new_string: "a\nb\nc\nd" }, { text: "ok", isError: false }),
       tool("w", "Write", { file_path: "/b.ts", content: "one\ntwo\nthree\n" }, { text: "ok", isError: false }),
     ]);
-    expect(html).toContain('<span class="text-added">+4</span><span class="text-removed"> −2</span>');
-    expect(html).toContain('<span class="text-added">+3</span></span>');
+    // The counts are Badge pills in the added and removed variants.
+    expect(html).toMatch(/<span class="[^"]*text-added[^"]*">\+4<\/span><span class="[^"]*text-removed[^"]*">−2<\/span>/);
+    expect(html).toMatch(/<span class="[^"]*text-added[^"]*">\+3<\/span><\/span>/);
   });
 
   it("shows an expanded Edit as a mini diff and a Write as added lines, other tools keep their JSON", () => {
@@ -598,8 +600,8 @@ describe("image blocks", () => {
     expect(bubble).toContain("max-h-[240px]");
     expect(bubble).toContain("rounded-[8px]");
     expect(bubble).toContain("Image omitted (4.2 MB)");
-    // The clock carries the full date as a tooltip.
-    expect(bubble).toMatch(/title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"/);
+    // The clock carries the full date as its label (and tooltip).
+    expect(bubble).toMatch(/time-stamp[^>]*aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"/);
   });
 });
 
@@ -643,7 +645,7 @@ describe("webview components render on the server", () => {
     expect(html).toContain("chat-bubble");
     // The timestamp sits inside the bubble and is always visible.
     const bubble = html.slice(html.indexOf("chat-bubble"), html.indexOf('data-turn-index="1"'));
-    expect(bubble).toMatch(/text-right[^>]*>\d\d:\d\d<\/div><\/div><\/div><\/div>/);
+    expect(bubble).toMatch(/text-right[^>]*><span[^>]*class="time-stamp[^"]*"[^>]*>\d\d:\d\d<\/span><\/div>/);
     expect(html).toContain("tool-line");
     // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
     expect(html).toContain('Used <span class="tool-fn">Bash</span>');
@@ -653,7 +655,7 @@ describe("webview components render on the server", () => {
     // No "Claude · HH:MM" meta line; the assistant time is a hover-only stamp with the full date as tooltip.
     expect(html).not.toContain("Claude · ");
     const assistant = html.slice(html.indexOf('data-turn-index="1"'));
-    expect(assistant).toMatch(/turn-time[^>]*title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"[^>]*>\d\d:\d\d<\/span>/);
+    expect(assistant).toMatch(/turn-time[^>]*><span[^>]*aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d\d:\d\d<\/span>/);
     // Two tiers: the content column wraps every row, content is primary, tool and thinking lines secondary.
     expect((assistant.match(/chat-content/g) ?? []).length).toBe(1);
     expect(assistant).toContain("tier-1");
@@ -712,8 +714,16 @@ describe("webview components render on the server", () => {
     // Row 1: title with the full tooltip, inline meta, icon-only Resume, "..." menu trigger.
     const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
     expect(h1).toContain("text-[16px]");
-    expect(h1).toMatch(/title="Title\nb\n2023-11-1[45] \d\d:\d\d\n15m\nmain\nsess"/);
-    expect(html).toMatch(/header-meta[^>]*>b · 2023-11-1[45] \d\d:\d\d · 2 messages</);
+    expect(h1).toMatch(/title="Title\nb\nNov 1[45], 2023 · [\d:]+( [AP]M)?\n15m\nmain\nsess"/);
+    expect(html).toMatch(/header-meta[^>]*>Nov 1[45], 2023 · [\d:]+( [AP]M)? · 2 messages</);
+    // The project is a folder button carrying the full path; its tooltip and right-click menu hang off it.
+    expect(html).toMatch(/folder-button[^>]*aria-label="Open folder \/a\/b"[^>]*data-path="\/a\/b"[^>]*>.*?<span class="min-w-0 truncate">b<\/span>/);
+    expect(folderActions(meta).map((a) => a.label)).toEqual([
+      "Open in Finder",
+      "Copy path",
+      "Open in new VS Code window",
+      "Add to workspace",
+    ]);
     expect(html).toContain('aria-label="Resume"');
     expect(html).toContain('aria-label="More actions"');
     expect(html).not.toContain(">Save as .txt<");
@@ -770,6 +780,9 @@ describe("webview components render on the server", () => {
     expect(mid).toContain(">Messages</button>");
     const narrow = render(400);
     expect(narrow).not.toContain("header-meta");
+    // The folder button keeps only its icon when the meta is gone.
+    expect(narrow).toMatch(/folder-button[^>]*aria-label="Open folder \/a\/b"/);
+    expect(narrow).not.toContain('<span class="min-w-0 truncate">b</span>');
     expect(narrow).not.toContain(">Messages</button>");
     expect(narrow).toMatch(/title="Messages"[^>]*>.*<span class="tabular-nums">7<\/span>/);
     expect(narrow).toMatch(/title="Files changed"[^>]*>.*<span class="tabular-nums">3<\/span>/);
@@ -879,5 +892,25 @@ describe("webview components render on the server", () => {
     expect(h1).toContain("min-w-0");
     expect(h1).toContain(`title="${title}\nb\nsess"`);
     expect(html).toContain(`>${title}</h1>`);
+    // Opened, the title tooltip shows the full title first and the meta lines muted below it.
+    const open = renderToString(
+      <TooltipProvider>
+        <Header
+          meta={{ ...meta, gitBranch: "main" }}
+          turnCount={2}
+          openAt="oldest"
+          onOpenAtChange={() => {}}
+          tab="messages"
+          onTabChange={() => {}}
+          filesCount={0}
+          titleTooltipOpen
+        />
+      </TooltipProvider>,
+    );
+    const tip = open.slice(open.indexOf("title-tooltip"));
+    expect(tip).toContain(`<div class="font-medium break-words">${title}</div>`);
+    expect(tip).toMatch(/text-muted-foreground[^>]*>b<\/div>/);
+    expect(tip).toMatch(/text-muted-foreground[^>]*>main<\/div>/);
+    expect(tip).toMatch(/text-muted-foreground[^>]*>sess<\/div>/);
   });
 });

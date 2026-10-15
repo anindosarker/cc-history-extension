@@ -1,8 +1,11 @@
 import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Separator } from "@/components/ui/separator";
 import type { VisibleTurn } from "@/lib/search";
 import { formatClock, formatFullDateTime } from "@/lib/format";
+import { TimeStamp } from "./TurnRow";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 import { Markdown } from "./Markdown";
@@ -47,7 +50,9 @@ export const AgentTurn = memo(function AgentTurn({ item, query, current, time }:
             title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
           >
             {"Agent · "}
-            <span className="agent-name">{name}</span>
+            <Badge variant="outline" className="agent-name px-1 py-0 text-[10px] leading-4 font-normal align-middle">
+              {name}
+            </Badge>
             {time ? ` · ${time}` : ""}
           </div>
           <CollapsibleTrigger asChild>
@@ -114,10 +119,10 @@ export const RecapTurn = memo(function RecapTurn({ item, query, current }: Omit<
         <div className="recap-card border-l-2 pl-3 py-0.5">
           <div className="flex items-center gap-3 select-none">
             <span className="recap-label text-[11px] tracking-wide text-muted-foreground">RECAP</span>
-            <span className="fold-rule h-px flex-1" aria-hidden="true" />
+            <Separator className="fold-rule flex-1 w-auto" />
             {ts ? (
-              <span className="text-[11px] text-muted-foreground tier-3" title={formatFullDateTime(ts)}>
-                {formatClock(ts)}
+              <span className="text-[11px] text-muted-foreground tier-3">
+                <TimeStamp time={formatClock(ts)} fullTime={formatFullDateTime(ts)} />
               </span>
             ) : null}
           </div>
@@ -141,11 +146,11 @@ export const NoticeTurn = memo(function NoticeTurn({ item, query, current }: Omi
         className="chat-content tier-2 flex items-center gap-3 leading-none select-none"
         title={ts ? formatFullDateTime(ts) : undefined}
       >
-        <span className="fold-rule h-px flex-1" aria-hidden="true" />
+        <Separator className="fold-rule flex-1 w-auto" />
         <span className={cn("tier-3 min-w-0 max-w-[80%] truncate text-center text-[11px]", usage && "notice-usage")}>
           <Highlight text={body} query={query} current={current} />
         </span>
-        <span className="fold-rule h-px flex-1" aria-hidden="true" />
+        <Separator className="fold-rule flex-1 w-auto" />
       </div>
     </div>
   );

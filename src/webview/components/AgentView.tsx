@@ -4,7 +4,7 @@ import type { SubagentInfo, Turn } from "@shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatDateTime, formatDuration, formatTokens } from "@/lib/format";
+import { formatDuration, formatHumanDateTime, formatTokens } from "@/lib/format";
 import { post } from "@/lib/vscode";
 import { StatusDot } from "./AgentsButton";
 import { MessagesView } from "./MessagesView";
@@ -80,7 +80,7 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
           </span>
           {duration && <span>{duration}</span>}
           {tokens !== undefined && <span title={`${tokens.toLocaleString()} tokens`}>{formatTokens(tokens)} tokens</span>}
-          {agent.startedAt && <span>{formatDateTime(agent.startedAt)}</span>}
+          {agent.startedAt && <span>{formatHumanDateTime(agent.startedAt)}</span>}
           {agent.model && <span>{agent.model}</span>}
         </div>
       </div>

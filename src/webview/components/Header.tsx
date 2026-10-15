@@ -1,8 +1,23 @@
-import { useRef } from "react";
-import { Clipboard, Download, Ellipsis, FileDiff, FileJson, Gauge, Hash, MessageSquare, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Clipboard,
+  Download,
+  Ellipsis,
+  ExternalLink,
+  FileDiff,
+  FileJson,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Gauge,
+  Hash,
+  MessageSquare,
+  Play,
+} from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
 import type { SessionMeta, SubagentInfo } from "@shared/types";
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatDateTime, formatDuration } from "@/lib/format";
+import { formatDuration, formatHumanDateTime } from "@/lib/format";
 import { useContainerWidth } from "@/lib/useContainerWidth";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/vscode";
@@ -39,6 +54,8 @@ interface Props {
   searchVisible?: boolean;
   /** Width override for tests; the browser measures the header. */
   width?: number;
+  /** Test override: render the title tooltip open (it is otherwise hover driven and lives outside server output). */
+  titleTooltipOpen?: boolean;
 }
 
 /** At and above this width the muted "project · date · N messages" line sits inline after the title. */
@@ -61,27 +78,49 @@ export function iconTabsFor(width: number | undefined): boolean {
 }
 
 /** The lines shown in the title tooltip, in order; empty values are left out. */
-export function titleTooltipLines(meta: SessionMeta): string[] {
+export function titleTooltipLines(meta: SessionMeta, now?: number): string[] {
   const duration =
     meta.startedAt && meta.lastActivityAt ? formatDuration(meta.lastActivityAt - meta.startedAt) : undefined;
   return [
     meta.title,
     meta.projectName,
-    meta.startedAt ? formatDateTime(meta.startedAt) : undefined,
+    meta.startedAt ? formatHumanDateTime(meta.startedAt, { now }) : undefined,
     duration,
     meta.gitBranch,
     meta.sessionId,
   ].filter((s): s is string => !!s);
 }
 
-/** "project · date · N messages", trimmed to what the layout can hold. */
-export function inlineMeta(meta: SessionMeta, turnCount: number, layout: MetaLayout): string | undefined {
+/** "date · N messages" after the folder button, trimmed to what the layout can hold. */
+export function inlineMeta(meta: SessionMeta, turnCount: number, layout: MetaLayout, now?: number): string | undefined {
   const messages = `${turnCount} message${turnCount === 1 ? "" : "s"}`;
   if (layout === "none") return undefined;
   if (layout === "short") return messages;
-  return [meta.projectName, meta.startedAt ? formatDateTime(meta.startedAt) : undefined, messages]
-    .filter(Boolean)
-    .join(" · ");
+  return [meta.startedAt ? formatHumanDateTime(meta.startedAt, { now }) : undefined, messages].filter(Boolean).join(" · ");
+}
+
+export interface FolderAction {
+  label: string;
+  icon: React.ReactNode;
+  onSelect: () => void;
+}
+
+/** Right-click menu of the folder button. */
+export function folderActions(meta: SessionMeta): FolderAction[] {
+  return [
+    { label: "Open in Finder", icon: <FolderOpen />, onSelect: () => post({ type: "openFolder" }) },
+    { label: "Copy path", icon: <Clipboard />, onSelect: () => post({ type: "copyText", text: meta.cwd }) },
+    {
+      label: "Open in new VS Code window",
+      icon: <ExternalLink />,
+      onSelect: () => post({ type: "folderAction", action: "newWindow" }),
+    },
+    {
+      label: "Add to workspace",
+      icon: <FolderPlus />,
+      onSelect: () => post({ type: "folderAction", action: "addToWorkspace" }),
+    },
+  ];
 }
 
 export interface MenuItem {
@@ -121,6 +160,7 @@ export function Header({
   search,
   searchVisible,
   width,
+  titleTooltipOpen,
 }: Props) {
   const rootRef = useRef<HTMLElement>(null);
   const measured = useContainerWidth(rootRef);
@@ -129,16 +169,91 @@ export function Header({
   const iconTabs = iconTabsFor(w);
   const meta2 = inlineMeta(meta, turnCount, metaLayout);
   const items = menuItems(meta);
+  const tooltipLines = titleTooltipLines(meta);
+  const actions = folderActions(meta);
+
+  // The title tooltip only matters while the title is cut off; a click shows the whole thing in place.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [truncated, setTruncated] = useState<boolean | undefined>(undefined);
+  const [wrapped, setWrapped] = useState(false);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setTruncated(!wrapped && el.scrollWidth > el.clientWidth + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wrapped, meta.title]);
+  useEffect(() => {
+    if (!wrapped) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setWrapped(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wrapped]);
+  const tooltipOpen = titleTooltipOpen ? true : wrapped || truncated === false ? false : undefined;
+
   return (
     <header ref={rootRef} className="border-b border-border shrink-0 min-w-0" data-meta={metaLayout}>
-      <div className="flex items-center gap-2 px-3 pt-2 pb-1 min-w-0">
-        <h1
-          className="text-[16px] font-semibold leading-tight min-w-0 truncate shrink"
-          title={titleTooltipLines(meta).join("\n")}
-        >
-          {meta.title}
-        </h1>
+      <div className={cn("flex gap-2 px-3 pt-2 pb-1 min-w-0", wrapped ? "items-start" : "items-center")}>
+        <Tooltip delayDuration={150} open={tooltipOpen}>
+          <TooltipTrigger asChild>
+            <h1
+              ref={titleRef}
+              className={cn(
+                "text-[16px] font-semibold leading-tight min-w-0 shrink",
+                wrapped ? "whitespace-normal break-words" : "truncate",
+                (truncated || wrapped) && "cursor-pointer",
+              )}
+              // Native fallback until the browser has measured the title; the tooltip takes over after.
+              title={truncated === undefined ? tooltipLines.join("\n") : undefined}
+              data-wrapped={wrapped || undefined}
+              onClick={() => {
+                if (wrapped || truncated) setWrapped((v) => !v);
+              }}
+            >
+              {meta.title}
+            </h1>
+          </TooltipTrigger>
+          <TooltipContent portal={false} side="bottom" align="start" className="title-tooltip max-w-[480px] py-1.5">
+            <div className="font-medium break-words">{meta.title}</div>
+            {tooltipLines.slice(1).map((line, i) => (
+              <div key={i} className="text-muted-foreground text-[12px] break-words">
+                {line}
+              </div>
+            ))}
+          </TooltipContent>
+        </Tooltip>
         <AgentsButton agents={agents} onOpen={(id) => onOpenAgent?.(id)} compact />
+        <ContextMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ContextMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="folder-button shrink-0 px-1.5 text-muted-foreground font-normal max-w-[14rem]"
+                  onClick={() => post({ type: "openFolder" })}
+                  aria-label={`Open folder ${meta.cwd}`}
+                  data-path={meta.cwd}
+                >
+                  <Folder />
+                  {metaLayout !== "none" && <span className="min-w-0 truncate">{meta.projectName}</span>}
+                </Button>
+              </ContextMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{meta.cwd}</TooltipContent>
+          </Tooltip>
+          <ContextMenuContent>
+            {actions.map((a, i) => (
+              <ContextMenuGroupItem key={a.label} action={a} separatorBefore={i === 2} />
+            ))}
+          </ContextMenuContent>
+        </ContextMenu>
         {meta2 && (
           <span className="header-meta text-[12px] text-muted-foreground min-w-0 truncate shrink-[2]" title={meta2}>
             {meta2}
@@ -227,5 +342,17 @@ export function Header({
         </div>
       </div>
     </header>
+  );
+}
+
+function ContextMenuGroupItem({ action, separatorBefore }: { action: FolderAction; separatorBefore: boolean }) {
+  return (
+    <>
+      {separatorBefore && <ContextMenuSeparator />}
+      <ContextMenuItem onSelect={action.onSelect}>
+        {action.icon}
+        {action.label}
+      </ContextMenuItem>
+    </>
   );
 }

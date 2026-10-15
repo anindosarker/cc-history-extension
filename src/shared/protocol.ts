@@ -17,6 +17,10 @@ export type WebviewToHost =
   | { type: "resume" }
   /** Open the usage panel (runs the ccHistory.openUsage command). */
   | { type: "openUsage" }
+  /** Reveal the session's working directory in the OS file manager. */
+  | { type: "openFolder" }
+  /** Other actions on the session's working directory. */
+  | { type: "folderAction"; action: "newWindow" | "addToWorkspace" }
   | { type: "setOpenAt"; value: OpenAt }
   | { type: "copyText"; text: string };
 

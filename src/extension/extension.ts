@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { DIFF_SCHEME, DiffContentProvider } from "./diffProvider";
 import { exportSession } from "./exportHost";
+import { copyPath, revealFolder } from "./folder";
 import { Indexer } from "./indexer";
 import { activityOf } from "./indexScan";
 import { resumeSession } from "./resume";
@@ -75,6 +76,14 @@ export function activate(context: vscode.ExtensionContext): void {
       "ccHistory.revealJsonl",
       withMeta((m) => vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(m.filePath))),
     ),
+    vscode.commands.registerCommand("ccHistory.revealProject", async (arg?: unknown) => {
+      const cwd = projectCwdFrom(arg);
+      if (cwd) await revealFolder(cwd);
+    }),
+    vscode.commands.registerCommand("ccHistory.copyProjectPath", async (arg?: unknown) => {
+      const cwd = projectCwdFrom(arg);
+      if (cwd) await copyPath(cwd);
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("ccHistory.projectsDir")) {
         indexer.startWatching();
@@ -123,3 +132,13 @@ function truncate(s: string, n: number): string {
 }
 
 export type { TreeNode };
+
+/** The working directory of a project tree node (or a plain cwd string) passed to a command. */
+function projectCwdFrom(arg: unknown): string | undefined {
+  if (typeof arg === "string") return arg;
+  if (typeof arg === "object" && arg !== null && "group" in arg) {
+    const group = (arg as { group?: { cwd?: unknown } }).group;
+    if (typeof group?.cwd === "string") return group.cwd;
+  }
+  return undefined;
+}

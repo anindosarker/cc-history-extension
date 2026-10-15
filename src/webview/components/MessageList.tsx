@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { OpenAt } from "@shared/openAt";
 import { nearBottomRight, scrollButtonsFor, type ScrollButtons } from "@/lib/scrollButtons";
 import { atBottom, atTop, SETTLE_START, settleNext } from "@/lib/settle";
@@ -329,15 +330,16 @@ function ScrollButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      className="scroll-button size-7 inline-flex items-center justify-center rounded-full border bg-background text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer [&_svg]:size-3.5"
+    <Button
+      variant="outline"
+      size="icon"
+      className="scroll-button size-7 rounded-full bg-background text-muted-foreground hover:text-foreground"
       onClick={onClick}
       aria-label={label}
       title={label}
       tabIndex={-1}
     >
       {children}
-    </button>
+    </Button>
   );
 }

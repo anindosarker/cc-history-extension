@@ -170,15 +170,16 @@ function IconButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="h-5 w-5 inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-40 disabled:pointer-events-none cursor-pointer [&_svg]:size-3.5"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-40"
           onClick={onClick}
           disabled={disabled}
           aria-label={label}
         >
           {children}
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

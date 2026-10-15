@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { OpenAll, VisibleTurn } from "@/lib/search";
 import { countOccurrences, blockText } from "@/lib/search";
 import { formatClock, formatFullDateTime } from "@/lib/format";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentTurn, NoticeTurn, RecapTurn, SystemTurn } from "./InjectedTurn";
 import { ImageBlock } from "./ImageBlock";
 import { TextBlock } from "./TextBlock";
@@ -58,11 +59,8 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
           <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[18px] py-[14px]">
             {body}
             {time && (
-              <div
-                className="mt-[6px] text-right text-[11px] leading-none text-muted-foreground select-none"
-                title={fullTime}
-              >
-                {time}
+              <div className="mt-[6px] text-right text-[11px] leading-none text-muted-foreground select-none">
+                <TimeStamp time={time} fullTime={fullTime} />
               </div>
             )}
           </div>
@@ -75,12 +73,8 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
     <div className="chat-turn py-[18px]" data-turn-index={item.index}>
       <div className="chat-content relative">
         {time && (
-          <span
-            className="turn-time absolute top-0 text-[11px] leading-none text-muted-foreground select-none"
-            title={fullTime}
-            aria-hidden="true"
-          >
-            {time}
+          <span className="turn-time absolute top-0 text-[11px] leading-none text-muted-foreground select-none">
+            <TimeStamp time={time} fullTime={fullTime} />
           </span>
         )}
         {body}
@@ -88,3 +82,17 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
     </div>
   );
 });
+
+/** "HH:MM" with the full date in a tooltip (and as the accessible label). */
+export function TimeStamp({ time, fullTime }: { time: string; fullTime?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="time-stamp cursor-default" aria-label={fullTime}>
+          {time}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{fullTime}</TooltipContent>
+    </Tooltip>
+  );
+}

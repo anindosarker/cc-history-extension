@@ -7,6 +7,7 @@ import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
 import { exportSession } from "./exportHost";
 import { resolveFilePath } from "./filePaths";
+import { addFolderToWorkspace, openFolderInNewWindow, revealFolder } from "./folder";
 import { readLiveSessionIds } from "./liveStatus";
 import { parseSessionFile, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
@@ -137,6 +138,13 @@ class SessionPanel {
         return;
       case "openUsage":
         await vscode.commands.executeCommand("ccHistory.openUsage");
+        return;
+      case "openFolder":
+        await revealFolder(this.meta.cwd);
+        return;
+      case "folderAction":
+        if (msg.action === "newWindow") await openFolderInNewWindow(this.meta.cwd);
+        else addFolderToWorkspace(this.meta.cwd);
         return;
       case "setOpenAt":
         await setOpenAt(msg.value);

@@ -4,6 +4,7 @@ import { editCounts, editLines } from "@shared/editStats";
 import { parseFileRef } from "@shared/fileRef";
 import { displayToolName } from "@shared/toolSummary";
 import type { Block } from "@shared/types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { agentForToolUse, useAgents } from "@/lib/agents";
@@ -110,20 +111,23 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
           </button>
         )}
         {counts && (
-          <span className="shrink-0 text-[11px] tabular-nums whitespace-nowrap select-none" title="Lines added and removed">
-            <span className="text-added">{`+${counts.added}`}</span>
-            {counts.removed !== undefined && <span className="text-removed">{` −${counts.removed}`}</span>}
+          <span className="edit-counts flex shrink-0 items-center gap-1 select-none" title="Lines added and removed">
+            <Badge variant="added" className="px-1 py-0 text-[10px] leading-4 tabular-nums">{`+${counts.added}`}</Badge>
+            {counts.removed !== undefined && (
+              <Badge variant="removed" className="px-1 py-0 text-[10px] leading-4 tabular-nums">{`−${counts.removed}`}</Badge>
+            )}
           </span>
         )}
         {spawned && (
-          <button
-            type="button"
-            className="agent-name shrink-0 text-[11px] hover:underline cursor-pointer"
+          <Button
+            variant="link"
+            size="sm"
+            className="agent-name h-auto shrink-0 px-0 text-[11px] font-normal"
             onClick={() => openAgent(spawned.agentId)}
             title={`Open the ${spawned.name} transcript`}
           >
             Open transcript
-          </button>
+          </Button>
         )}
       </div>
       <CollapsibleContent>
