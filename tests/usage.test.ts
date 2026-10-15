@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { CredentialsCache, parseCredentials, type Credentials } from "../src/extension/usage/credentials";
 import {
+  colorDecision,
+  DEFAULT_DISPLAY_SETTINGS,
   formatAgo,
   formatResetAt,
   relativeDuration,
+  segmentsOf,
   severity,
+  statusBarItemText,
   statusBarText,
   tooltipLines,
+  type UsageDisplaySettings,
 } from "../src/extension/usage/format";
 import { intervalMs, MAX_BACKOFF_MS, nextDelayMs } from "../src/extension/usage/schedule";
 import { fetchUsage, parseUsage, UsageError, USAGE_URL } from "../src/extension/usage/usageClient";
@@ -210,6 +215,103 @@ describe("usage formatting", () => {
     expect(severity({ fetchedAt, fiveHour: { pct: 75 }, scoped: [] })).toBe("warning");
     expect(severity({ fetchedAt, fiveHour: { pct: 90 }, scoped: [] })).toBe("error");
     expect(severity({ fetchedAt, scoped: [] })).toBeUndefined();
+  });
+});
+
+describe("usage colour and format settings", () => {
+  const settings = (over: Partial<UsageDisplaySettings> = {}): UsageDisplaySettings => ({
+    ...DEFAULT_DISPLAY_SETTINGS,
+    ...over,
+  });
+  // 5h is moderate, the Fable share is the real problem, and Extra is higher still but must not count.
+  const snap = {
+    fetchedAt,
+    fiveHour: { pct: 67 },
+    weekly: { pct: 47 },
+    scoped: [
+      { label: "Fable", pct: 92 },
+      { label: "Extra", pct: 99 },
+    ],
+  };
+
+  it("lists segments in display order with short labels", () => {
+    expect(segmentsOf(snap).map((s) => [s.key, s.short, s.pct])).toEqual([
+      ["fiveHour", "5h", 67],
+      ["weekly", "wk", 47],
+      ["Fable", "F", 92],
+      ["Extra", "E", 99],
+    ]);
+    expect(segmentsOf({ fetchedAt, scoped: [] })).toEqual([]);
+  });
+
+  it("gives the same level in background and text mode and none when off", () => {
+    const bg = colorDecision(snap, settings({ colorMode: "background" }));
+    const text = colorDecision(snap, settings({ colorMode: "text" }));
+    expect(bg.level).toBe("error");
+    expect(text).toEqual(bg);
+    expect(bg.segment?.key).toBe("Fable");
+    expect(bg.reason).toBe("F 92% (error at 90%)");
+    expect(colorDecision(snap, settings({ colorMode: "off" }))).toEqual({ level: undefined, reason: "" });
+  });
+
+  it("colours by the highest segment or only the five-hour window", () => {
+    expect(colorDecision(snap, settings({ colorBy: "max" })).reason).toBe("F 92% (error at 90%)");
+    const fiveHour = colorDecision(snap, settings({ colorBy: "fiveHour" }));
+    expect(fiveHour.level).toBeUndefined();
+    expect(fiveHour.reason).toBe("");
+    expect(colorDecision(snap, settings({ colorBy: "fiveHour", warnAt: 60 })).reason).toBe("5h 67% (warning at 60%)");
+    expect(colorDecision({ fetchedAt, scoped: [{ label: "Opus", pct: 95 }] }, settings({ colorBy: "fiveHour" })).level).toBeUndefined();
+  });
+
+  it("switches level exactly at warnAt and errorAt, not just below", () => {
+    const at = (p: number) => colorDecision({ fetchedAt, fiveHour: { pct: p }, scoped: [] }, settings({ warnAt: 50, errorAt: 80 }));
+    expect(at(49.9).level).toBeUndefined();
+    expect(at(50).level).toBe("warning");
+    expect(at(50).reason).toBe("5h 50% (warning at 50%)");
+    expect(at(79.9).level).toBe("warning");
+    expect(at(80).level).toBe("error");
+    expect(at(80).reason).toBe("5h 80% (error at 80%)");
+  });
+
+  it("leaves extra usage out of the max decision", () => {
+    const extraOnly = { fetchedAt, fiveHour: { pct: 10 }, scoped: [{ label: "Extra", pct: 99 }] };
+    expect(colorDecision(extraOnly, settings()).level).toBeUndefined();
+    expect(colorDecision({ fetchedAt, scoped: [{ label: "Extra", pct: 99 }] }, settings()).level).toBeUndefined();
+  });
+
+  it("renders full, compact and max formats", () => {
+    const quiet = settings({ colorMode: "off" });
+    expect(statusBarItemText(snap, { ...quiet, format: "full" })).toBe("$(sparkle) 5h 67% · wk 47% · F 92% · E 99%");
+    expect(statusBarItemText(snap, { ...quiet, format: "compact" })).toBe("$(sparkle) 67 · 47 · 92 · 99");
+    expect(statusBarItemText(snap, { ...quiet, format: "max" })).toBe("$(sparkle) E 99%");
+    const noExtra = { ...snap, scoped: [{ label: "Fable", pct: 92 }] };
+    expect(statusBarItemText(noExtra, { ...quiet, format: "max" })).toBe("$(sparkle) F 92%");
+    for (const format of ["full", "compact", "max"] as const) {
+      expect(statusBarItemText({ fetchedAt, scoped: [] }, { ...quiet, format })).toBe("$(sparkle) usage");
+    }
+  });
+
+  it("pulses and flags the triggering segment at error level only when pulse is on", () => {
+    expect(statusBarItemText(snap, settings({ pulse: true }))).toBe("$(pulse) 5h 67% · wk 47% · $(warning) F 92% · E 99%");
+    expect(statusBarItemText(snap, settings({ pulse: true, format: "compact" }))).toBe("$(pulse) 67 · 47 · $(warning) 92 · 99");
+    expect(statusBarItemText(snap, settings({ pulse: false }))).toBe("$(sparkle) 5h 67% · wk 47% · F 92% · E 99%");
+    // Warning level never changes the icons, and neither does an uncoloured widget.
+    expect(statusBarItemText(snap, settings({ pulse: true, errorAt: 100 }))).toBe("$(sparkle) 5h 67% · wk 47% · F 92% · E 99%");
+    expect(statusBarItemText(snap, settings({ pulse: true, colorMode: "off" }))).toBe("$(sparkle) 5h 67% · wk 47% · F 92% · E 99%");
+    // In max format the shown segment is the highest overall, which may not be the one that triggered.
+    expect(statusBarItemText(snap, settings({ pulse: true, format: "max" }))).toBe("$(pulse) E 99%");
+    const noExtra = { ...snap, scoped: [{ label: "Fable", pct: 92 }] };
+    expect(statusBarItemText(noExtra, settings({ pulse: true, format: "max" }))).toBe("$(pulse) $(warning) F 92%");
+  });
+
+  it("adds a colour line to the tooltip only when coloured", () => {
+    const now = fetchedAt + 1_000;
+    const colored = tooltipLines(snap, { now, color: colorDecision(snap, settings()) });
+    expect(colored).toContain("Color: F 92% (error at 90%)");
+    expect(colored.indexOf("Color: F 92% (error at 90%)")).toBe(colored.indexOf("Updated 1s ago") - 1);
+    const plain = tooltipLines(snap, { now, color: colorDecision(snap, settings({ colorMode: "off" })) });
+    expect(plain.some((l) => l.startsWith("Color:"))).toBe(false);
+    expect(tooltipLines(snap, { now }).some((l) => l.startsWith("Color:"))).toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { CredentialsCache } from "./credentials";
+import { DEFAULT_DISPLAY_SETTINGS, type UsageDisplaySettings } from "./format";
 import { intervalMs, nextDelayMs } from "./schedule";
 import { fetchUsage, UsageError, type UsageErrorReason, type UsageSnapshot } from "./usageClient";
 
@@ -20,18 +21,38 @@ export interface UsageState {
   refreshing: boolean;
 }
 
-export interface UsageSettings {
+export interface UsageSettings extends UsageDisplaySettings {
   enabled: boolean;
   intervalMs: number;
   showInStatusBar: boolean;
 }
 
+function clampPct(v: unknown, fallback: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.min(100, Math.max(1, v));
+}
+
+function oneOf<T extends string>(v: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
 export function readUsageSettings(): UsageSettings {
   const cfg = vscode.workspace.getConfiguration("ccHistory.usage");
+  const d = DEFAULT_DISPLAY_SETTINGS;
+  let warnAt = clampPct(cfg.get("warnAt"), d.warnAt);
+  let errorAt = clampPct(cfg.get("errorAt"), d.errorAt);
+  // Warning must come first on the way up; a reversed pair is treated as a slip, not a request.
+  if (warnAt > errorAt) [warnAt, errorAt] = [errorAt, warnAt];
   return {
     enabled: cfg.get<boolean>("enabled") ?? true,
     intervalMs: intervalMs(cfg.get<number>("intervalSeconds")),
     showInStatusBar: cfg.get<boolean>("showInStatusBar") ?? true,
+    warnAt,
+    errorAt,
+    colorMode: oneOf(cfg.get("colorMode"), ["background", "text", "off"], d.colorMode),
+    colorBy: oneOf(cfg.get("colorBy"), ["max", "fiveHour"], d.colorBy),
+    format: oneOf(cfg.get("format"), ["full", "compact", "max"], d.format),
+    pulse: cfg.get<boolean>("pulse") ?? d.pulse,
   };
 }
 
@@ -63,7 +84,13 @@ export class UsagePoller implements vscode.Disposable {
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (!e.affectsConfiguration("ccHistory.usage")) return;
+        const prev = this.settings;
         this.settings = readUsageSettings();
+        // Display-only changes (colour, format, thresholds) just need a re-render, not a poll.
+        if (prev.enabled === this.settings.enabled && prev.intervalMs === this.settings.intervalMs) {
+          this.emit();
+          return;
+        }
         this.failures = 0;
         if (this.settings.enabled) void this.refresh();
         else {
