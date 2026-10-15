@@ -121,7 +121,9 @@ describe("agent and system turns in filters", () => {
         ))}
       </TooltipProvider>,
     );
-    expect(html).toMatch(/Agent · <span class="[^"]*agent-name[^"]*">scripts-agent<\/span>/);
+    // The card leads with the agent's name, as Claude Code's own agent list does; no "Agent ·" prefix, no badge.
+    expect(html).toMatch(/agent-card-head[^>]*><span class="agent-name shrink-0 font-medium">scripts-agent<\/span>/);
+    expect(html).not.toContain("Agent · ");
     expect(html).toContain("agent-card");
     expect(html).toContain(">done<");
     expect(html).toContain("System · task notification");
@@ -860,7 +862,7 @@ describe("webview components render on the server", () => {
   });
 
   it("truncates a long title and keeps the full text in a title attribute", () => {
-    const title = "Mouse wheel zoom setting investigation and follow-up fixes";
+    const title = "Mouse wheel zoom setting investigation and the follow-up fixes";
     expect(title.length).toBeGreaterThanOrEqual(60);
     const meta: SessionMeta = {
       sessionId: "sess",
