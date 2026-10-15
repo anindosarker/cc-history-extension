@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { DIFF_SCHEME, DiffContentProvider } from "./diffProvider";
-import { getShowStatus } from "./config";
+import { getShowStatus, getSortBy, setSortBy } from "./config";
 import { exportSession } from "./exportHost";
 import { maybeShowFirstRunNotice } from "./firstRunHost";
 import { copyPath, revealFolder } from "./folder";
@@ -11,6 +11,7 @@ import { resumeSession } from "./resume";
 import { loadSessionData, SessionPanelManager } from "./sessionPanel";
 import { SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
+import { SORT_DETAIL, SORT_LABEL, SORT_MODES, sortSessions, type SortBy } from "./treeModel";
 import { SessionNode, SessionTreeProvider, type TreeNode } from "./treeProvider";
 import { UsageStatusBar } from "./usage/statusBar";
 import { UsagePanelManager } from "./usage/usagePanel";
@@ -62,6 +63,11 @@ export function activate(context: vscode.ExtensionContext): void {
     view.onDidChangeVisibility((e) => status.setVisible(e.visible)),
     indexer.onDidChange(() => void status.refresh()),
     vscode.commands.registerCommand("ccHistory.refresh", () => indexer.refresh().then(() => tree.refresh())),
+    vscode.commands.registerCommand("ccHistory.sortBy", async () => {
+      const picked = await pickSortBy(getSortBy());
+      if (picked && picked !== getSortBy()) await setSortBy(picked);
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
     vscode.commands.registerCommand("ccHistory.findSession", async () => {
       const meta = await pickSession(indexer);
       if (meta) panels.open(meta);
@@ -105,6 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
         indexer.reloadHiddenProjects();
         tree.refresh();
       }
+      if (e.affectsConfiguration("ccHistory.tree.sortBy")) tree.refresh();
     }),
   );
 
@@ -123,9 +130,24 @@ interface SessionPick extends vscode.QuickPickItem {
   meta: SessionMeta;
 }
 
+interface SortPick extends vscode.QuickPickItem {
+  mode: SortBy;
+}
+
+async function pickSortBy(current: SortBy): Promise<SortBy | undefined> {
+  const items: SortPick[] = SORT_MODES.map((mode) => ({
+    label: SORT_LABEL[mode],
+    description: mode === current ? "current" : undefined,
+    detail: SORT_DETAIL[mode],
+    mode,
+  }));
+  const picked = await vscode.window.showQuickPick(items, { placeHolder: "Sort projects and sessions by" });
+  return picked?.mode;
+}
+
+/** Sessions in the order the tree uses (ccHistory.tree.sortBy). */
 async function pickSession(indexer: Indexer): Promise<SessionMeta | undefined> {
-  const items: SessionPick[] = indexer.sessions
-    .sort((a, b) => activityOf(b) - activityOf(a))
+  const items: SessionPick[] = sortSessions(indexer.sessions, getSortBy())
     .map((meta) => ({
       label: meta.title,
       description: `${meta.projectName} · ${relativeTime(activityOf(meta))}`,

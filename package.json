@@ -82,6 +82,12 @@
         "icon": "$(search)"
       },
       {
+        "command": "ccHistory.sortBy",
+        "title": "Sort by...",
+        "category": "Claude Code History",
+        "icon": "$(list-ordered)"
+      },
+      {
         "command": "ccHistory.openSession",
         "title": "Open",
         "category": "Claude Code History"
@@ -144,9 +150,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "ccHistory.refresh",
+          "command": "ccHistory.sortBy",
           "when": "view == ccHistory.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "ccHistory.refresh",
+          "when": "view == ccHistory.sessions",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -218,6 +229,21 @@
           "type": "boolean",
           "default": true,
           "description": "Show live status dots (running, open, recently ended) in the Sessions view. When off, the sessions folder is not watched or polled."
+        },
+        "ccHistory.tree.sortBy": {
+          "type": "string",
+          "enum": [
+            "activity",
+            "name",
+            "sessions"
+          ],
+          "enumDescriptions": [
+            "Most recently active projects and sessions first.",
+            "Projects and sessions A to Z.",
+            "Projects with the most sessions first; sessions inside a project by last activity."
+          ],
+          "default": "activity",
+          "description": "Order of projects and sessions in the Sessions view and in Find Session. Projects of the current workspace always come first. The Sort by... button in the view title changes this setting."
         },
         "ccHistory.tree.hideProjects": {
           "type": "array",

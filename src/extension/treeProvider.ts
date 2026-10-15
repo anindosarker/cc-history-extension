@@ -1,25 +1,36 @@
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
+import { getSortBy } from "./config";
 import type { Indexer } from "./indexer";
 import { activityMinute, activityOf, type ProjectGroup } from "./indexScan";
 import { STATUS_LABEL } from "./liveStatus";
-import { statusUri, type SessionStatusProvider } from "./statusProvider";
+import { projectUri, statusUri, type SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
+import { buildTreeModel, DIVIDER_LABEL, pinCurrentProjects, sortSessions, type TreeRow } from "./treeModel";
 import { sessionTooltipLines } from "./treeTooltip";
-
-/** Sessions with activity this recent get the icon variant with a green dot. */
 
 const REFRESH_DEBOUNCE_MS = 3000;
 
 export class ProjectNode {
-  constructor(readonly group: ProjectGroup) {}
+  constructor(
+    readonly group: ProjectGroup,
+    readonly current = false,
+  ) {}
 }
 
 export class SessionNode {
   constructor(readonly meta: SessionMeta) {}
 }
 
-export type TreeNode = ProjectNode | SessionNode;
+/** The "Other projects" row between the current workspace's projects and the rest. */
+export class DividerNode {}
+
+export type TreeNode = ProjectNode | SessionNode | DividerNode;
+
+/** Paths of the folders open in this window, as the tree compares them against project cwds. */
+export function workspaceFolderPaths(): string[] {
+  return (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+}
 
 export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly emitter = new vscode.EventEmitter<TreeNode | undefined>();
@@ -38,7 +49,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     status.onDidChange(() => this.scheduleRefresh());
   }
 
-  /** Immediate, unconditional refresh (manual Refresh command). */
+  /** Immediate, unconditional refresh (manual Refresh command, setting or workspace folder change). */
   refresh(): void {
     if (this.pending) clearTimeout(this.pending);
     this.pending = undefined;
@@ -59,7 +70,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   private computeSignature(): string {
-    return this.indexer.projects
+    const projects = this.indexer.projects;
+    const pinned = pinCurrentProjects(projects, workspaceFolderPaths())
+      .current.map((g) => g.cwd)
+      .join(",");
+    const body = projects
       .map(
         (g) =>
           g.cwd +
@@ -70,6 +85,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
           "}",
       )
       .join(";");
+    return `${getSortBy()}#${pinned}#${body}`;
   }
 
   dispose(): void {
@@ -77,25 +93,42 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.emitter.dispose();
   }
 
+  /** The root rows as the tree shows them: current projects, divider, other projects. */
+  rootRows(): TreeRow[] {
+    return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy());
+  }
+
   getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
-      const groups = this.indexer.projects;
-      void vscode.commands.executeCommand("setContext", "ccHistory.empty", groups.length === 0);
-      return groups.map((g) => new ProjectNode(g));
+      const rows = this.rootRows();
+      void vscode.commands.executeCommand("setContext", "ccHistory.empty", rows.length === 0);
+      return rows.map((r) => (r.kind === "divider" ? new DividerNode() : new ProjectNode(r.group, r.current)));
     }
-    if (element instanceof ProjectNode) return element.group.sessions.map((s) => new SessionNode(s));
+    if (element instanceof ProjectNode) {
+      return sortSessions(element.group.sessions, getSortBy()).map((s) => new SessionNode(s));
+    }
     return [];
   }
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
+    if (element instanceof DividerNode) {
+      const item = new vscode.TreeItem(DIVIDER_LABEL, vscode.TreeItemCollapsibleState.None);
+      item.id = "divider";
+      item.tooltip = "Projects outside the current workspace";
+      item.iconPath = new vscode.ThemeIcon("dash");
+      item.contextValue = "divider";
+      return item;
+    }
     if (element instanceof ProjectNode) {
       const g = element.group;
       const item = new vscode.TreeItem(g.name, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `project:${g.cwd}`;
       item.description = `${g.sessions.length} session${g.sessions.length === 1 ? "" : "s"}`;
-      item.tooltip = g.cwd;
+      item.tooltip = element.current ? `${g.cwd}\nIn the current workspace` : g.cwd;
       item.iconPath = new vscode.ThemeIcon("folder");
       item.contextValue = "project";
+      // Only current projects carry the resource uri, so only they get the "cur" badge.
+      if (element.current) item.resourceUri = projectUri(g.cwd);
       return item;
     }
     const m = element.meta;

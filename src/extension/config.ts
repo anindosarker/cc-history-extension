@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { normalizeOpenAt, type OpenAt } from "../shared/openAt";
 import { DEFAULT_HIDDEN_PROJECTS } from "./hideProjects";
+import { normalizeSortBy, type SortBy } from "./treeModel";
 
 export function expandHome(p: string): string {
   if (p === "~") return os.homedir();
@@ -55,4 +56,15 @@ export function getHideProjects(): string[] {
   const raw = vscode.workspace.getConfiguration("ccHistory.tree").get<unknown>("hideProjects");
   if (!Array.isArray(raw)) return [...DEFAULT_HIDDEN_PROJECTS];
   return raw.filter((p): p is string => typeof p === "string");
+}
+
+/** Order of projects and sessions in the tree and in Find Session. */
+export function getSortBy(): SortBy {
+  return normalizeSortBy(vscode.workspace.getConfiguration("ccHistory.tree").get<string>("sortBy"));
+}
+
+export async function setSortBy(value: SortBy): Promise<void> {
+  await vscode.workspace
+    .getConfiguration("ccHistory.tree")
+    .update("sortBy", normalizeSortBy(value), vscode.ConfigurationTarget.Global);
 }
