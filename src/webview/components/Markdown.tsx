@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { parseFileRef } from "@shared/fileRef";
+import { useAgents } from "@/lib/agents";
 import { escapeRegExp } from "@/lib/search";
 import { post } from "@/lib/vscode";
 
@@ -101,6 +102,51 @@ function rehypeFileLinks() {
   };
 }
 
+/** Rehype plugin that wraps "@name" tokens naming a known agent in a span, outside code. */
+export function rehypeMentions(options: { names: string[] }) {
+  const names = options.names;
+  return (tree: HastNode) => {
+    if (names.length === 0) return;
+    const set = new Set(names);
+    const re = /(^|[^\w@])@([\w-]+)/g;
+    const visit = (node: HastNode) => {
+      if (!("children" in node) || !node.children) return;
+      if (node.type === "element") {
+        const tag = (node as HastElement).tagName;
+        if (tag === "code" || tag === "pre" || tag === "a" || tag === "mark") return;
+      }
+      const next: HastNode[] = [];
+      for (const child of node.children) {
+        if (child.type !== "text") {
+          visit(child);
+          next.push(child);
+          continue;
+        }
+        const value = (child as HastText).value;
+        let last = 0;
+        let hit = false;
+        for (const m of value.matchAll(re)) {
+          if (!set.has(m[2])) continue;
+          const start = (m.index ?? 0) + m[1].length;
+          hit = true;
+          if (start > last) next.push({ type: "text", value: value.slice(last, start) });
+          next.push({
+            type: "element",
+            tagName: "span",
+            properties: { className: ["agent-mention"] },
+            children: [{ type: "text", value: `@${m[2]}` }],
+          });
+          last = start + 1 + m[2].length;
+        }
+        if (!hit) next.push(child);
+        else if (last < value.length) next.push({ type: "text", value: value.slice(last) });
+      }
+      node.children = next;
+    };
+    visit(tree);
+  };
+}
+
 /** The file reference carried by a clicked or activated element, when it is a file link. */
 export function fileRefOf(target: EventTarget | null): { path: string; line?: number; column?: number } | undefined {
   const el = (target as HTMLElement | null)?.closest?.("[data-file-path]") as HTMLElement | null;
@@ -116,7 +162,12 @@ export function openFileRef(ref: { path: string; line?: number; column?: number 
 }
 
 export const Markdown = memo(function Markdown({ text, query, current = -1 }: Props) {
-  const plugins = useMemo(() => [rehypeFileLinks, [rehypeMark, { query, current }] as const], [query, current]);
+  const { agents } = useAgents();
+  const names = useMemo(() => agents.map((a) => a.name), [agents]);
+  const plugins = useMemo(
+    () => [rehypeFileLinks, [rehypeMentions, { names }] as const, [rehypeMark, { query, current }] as const],
+    [names, query, current],
+  );
   return (
     <div
       className="md"

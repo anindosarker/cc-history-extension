@@ -54,7 +54,7 @@ export function AgentsButton({ agents, onOpen, compact }: Props) {
               >
                 <StatusDot status={a.status} />
                 <span className="min-w-0 flex-1 truncate">{a.description}</span>
-                <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
+                <Badge variant="outline" className="agent-name shrink-0 font-normal">
                   {a.name}
                 </Badge>
               </button>

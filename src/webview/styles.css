@@ -34,6 +34,15 @@
   --bubble-tint: var(--vscode-textLink-foreground, #3794ff);
   --inline-code-bg: color-mix(in srgb, currentColor 8%, transparent);
   --link: var(--vscode-textLink-foreground);
+  /* Accents, all from the theme's chart palette with the VS Code dark defaults as fallbacks. */
+  --chart-green: var(--vscode-charts-green, #89d185);
+  --chart-red: var(--vscode-charts-red, #f14c4c);
+  --chart-blue: var(--vscode-charts-blue, #3794ff);
+  --chart-purple: var(--vscode-charts-purple, #b180d7);
+  --chart-yellow: var(--vscode-charts-yellow, #cca700);
+  --fn-foreground: var(--vscode-symbolIcon-functionForeground, var(--vscode-textLink-foreground, #3794ff));
+  --ansi-yellow: var(--vscode-terminal-ansiYellow, #cca700);
+  --preformat: var(--vscode-textPreformat-foreground, currentColor);
 }
 
 @theme inline {
@@ -212,6 +221,88 @@
   direction: rtl;
   text-align: left;
 }
+.tool-path:hover,
+.tool-path:focus-visible {
+  color: var(--link);
+}
+/* Tool line accents: a status dot, the tool name in the symbol colour, Bash summaries in terminal yellow. */
+.tool-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--vscode-descriptionForeground, currentColor) 50%, transparent);
+}
+.tool-dot[data-status="ok"] {
+  background: var(--chart-green);
+}
+.tool-dot[data-status="error"] {
+  background: var(--chart-red);
+}
+.tool-dot[data-status="agent"] {
+  background: var(--chart-purple);
+}
+.tool-fn {
+  color: var(--fn-foreground);
+}
+.tool-bash {
+  color: var(--ansi-yellow);
+  opacity: 0.8;
+}
+.text-added {
+  color: var(--diff-added);
+}
+.text-removed {
+  color: var(--diff-removed);
+}
+/* Mini diff inside an expanded Edit or Write line. */
+.mini-diff {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mini-diff .line {
+  padding: 0 8px;
+}
+.mini-diff .line[data-kind="del"] {
+  background: color-mix(in srgb, var(--chart-red) 12%, transparent);
+}
+.mini-diff .line[data-kind="add"] {
+  background: color-mix(in srgb, var(--chart-green) 12%, transparent);
+}
+.mini-diff .line + .block {
+  margin-top: 6px;
+}
+/* Fold count: green when every call in the run succeeded, red if any failed. */
+.fold-count[data-status="ok"] {
+  color: var(--chart-green);
+}
+.fold-count[data-status="error"] {
+  color: var(--chart-red);
+}
+/* Agents: names in chart blue, cards with a blue left rule, @mentions of a known agent in text. */
+.agent-name {
+  color: var(--chart-blue);
+}
+.agent-card {
+  border-left: 2px solid color-mix(in srgb, var(--chart-blue) 50%, transparent);
+  padding-left: 10px;
+}
+.agent-mention {
+  color: var(--chart-blue);
+}
+/* Usage-limit notices carry a short yellow rule before the text. */
+.notice-usage::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--chart-yellow);
+}
 
 /* Markdown body styling, kept small and VS Code flavoured. */
 .md {
@@ -273,6 +364,7 @@
 .md code {
   font-family: var(--font-mono);
   font-size: 0.9em;
+  color: var(--preformat);
   background: var(--inline-code-bg);
   padding: 0.05em 0.3em;
   border-radius: 3px;
@@ -282,6 +374,7 @@
 }
 .md code.file-link:hover,
 .md code.file-link:focus-visible {
+  color: var(--link);
   text-decoration: underline;
   text-underline-offset: 2px;
   outline: none;
@@ -297,6 +390,7 @@
 }
 .md pre code {
   background: transparent;
+  color: inherit;
   padding: 0;
   font-size: 13px;
   white-space: pre;

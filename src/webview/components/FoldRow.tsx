@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { FoldRow as FoldRowModel, Match, OpenAll } from "@/lib/search";
 import { formatWorkDuration } from "@/lib/search";
+import { runStatus } from "@/lib/toolStatus";
 import { cn } from "@/lib/utils";
 import { TurnRow } from "./TurnRow";
 
@@ -18,6 +19,7 @@ export const FoldRow = memo(function FoldRow({ row, query, current, onToggle, na
   // Last "Expand all" / "Collapse all" request; seq 0 means nobody asked yet.
   const [openAll, setOpenAll] = useState<OpenAll>({ open: false, seq: 0 });
   const calls = `${row.toolCalls} tool call${row.toolCalls === 1 ? "" : "s"}`;
+  const status = runStatus(row.items.flatMap((v) => v.turn.blocks));
   const toggleAll = () => {
     const open = !openAll.open;
     setOpenAll({ open, seq: openAll.seq + 1 });
@@ -42,7 +44,9 @@ export const FoldRow = memo(function FoldRow({ row, query, current, onToggle, na
           </button>
           <span className="tier-3 flex shrink-0 items-center gap-3 text-[11px]">
             {row.hasMatch && !row.open && <span className="shrink-0">(match)</span>}
-            <span className="shrink-0">{calls}</span>
+            <span className="fold-count shrink-0" data-status={status}>
+              {calls}
+            </span>
             <button
               type="button"
               className="fold-all shrink-0 cursor-pointer hover:underline"

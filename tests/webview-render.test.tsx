@@ -15,6 +15,9 @@ import {
 import { DEFAULT_FILTERS, SearchBar, filtersActive } from "@/components/SearchBar";
 import { nearBottomRight, scrollButtonsFor } from "@/lib/scrollButtons";
 import { displayToolName } from "@shared/toolSummary";
+import { editCounts, editLines } from "@shared/editStats";
+import { runStatus, toolStatus } from "@/lib/toolStatus";
+import { AgentsContext } from "@/lib/agents";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
 import type { Block, FileChange, SessionMeta, Turn } from "@shared/types";
@@ -117,7 +120,8 @@ describe("agent and system turns in filters", () => {
         ))}
       </TooltipProvider>,
     );
-    expect(html).toContain("Agent · scripts-agent");
+    expect(html).toContain('Agent · <span class="agent-name">scripts-agent</span>');
+    expect(html).toContain("agent-card");
     expect(html).toContain(">done<");
     expect(html).toContain("System · task notification");
     expect((html.match(/chat-bubble/g) ?? []).length).toBe(1);
@@ -243,7 +247,7 @@ describe("file links", () => {
     expect(html).toMatch(/tool-file[^>]*title="Open src\/c.ts"/);
     expect(html).toMatch(/tool-file[^>]*title="Open ~\/d.md"/);
     // The Bash summary stays inside the trigger as plain text.
-    expect(html).toMatch(/<span class="min-w-0 flex-1 basis-0 truncate tier-3">cat src\/e.ts<\/span>/);
+    expect(html).toMatch(/<span class="min-w-0 flex-1 basis-0 truncate tool-bash">cat src\/e.ts<\/span>/);
   });
 
   it("truncates long tool names, shortens MCP names, and stacks the path under the trigger when narrow", () => {
@@ -278,9 +282,9 @@ describe("file links", () => {
 
     const wide = render(false);
     // The MCP line shows the short name, keeps the full one in the title and in a hidden span for search marks.
-    expect(wide).toMatch(/tool-name min-w-0 truncate" title="mcp__plugin_context-mode_context-mode__ctx_batch_execute">Used <span class="sr-only">mcp__plugin_context-mode_context-mode__<\/span>ctx_batch_execute<\/span>/);
+    expect(wide).toMatch(/tool-name min-w-0 truncate" title="mcp__plugin_context-mode_context-mode__ctx_batch_execute">Used <span class="sr-only">mcp__plugin_context-mode_context-mode__<\/span><span class="tool-fn">ctx_batch_execute<\/span><\/span>/);
     // Next to a path button the trigger keeps its own width and the name does not truncate.
-    expect(wide).toMatch(/tool-line[^"]*shrink-0"[^>]*title="Write \/Users\/me[^"]*"[^>]*>.*?<span class="tool-name shrink-0">Used <!-- -->Write<\/span>/);
+    expect(wide).toMatch(/tool-line[^"]*shrink-0"[^>]*title="Write \/Users\/me[^"]*"[^>]*>.*?<span class="tool-name shrink-0">Used <span class="tool-fn">Write<\/span><\/span>/);
     expect(wide).toMatch(/tool-file tool-path min-w-0 max-w-full truncate[^>]*title="Open \/Users\/me\/Work\/Personal\/project\/src\/webview\/components\/ToolUseBlock.tsx"/);
     expect(wide).not.toContain("data-stacked");
 
@@ -289,6 +293,144 @@ describe("file links", () => {
     expect((narrow.match(/data-stacked="true"/g) ?? []).length).toBe(1);
     expect(narrow).toMatch(/<div class="[^"]*flex-col[^"]*" data-stacked="true">/);
     expect(narrow).toMatch(/tool-name min-w-0 truncate"[^>]*>Used <span class="sr-only">/);
+  });
+});
+
+describe("colour accents", () => {
+  const tool = (
+    id: string,
+    name: string,
+    input: unknown,
+    result?: { text: string; isError: boolean },
+  ): Extract<Block, { type: "tool_use" }> => ({
+    type: "tool_use",
+    id,
+    name,
+    input,
+    summary: (input as { file_path?: string; command?: string }).file_path ?? (input as { command?: string }).command ?? name,
+    ...(result ? { result } : {}),
+  });
+  const all = { role: "all" as const, showThinking: true, showTools: true };
+  const render = (blocks: Block[], openAll?: { open: boolean; seq: number }) => {
+    const turn: Turn = { uuid: "c", role: "assistant", kind: "assistant", timestamp: 0, blocks };
+    const visible = applyFilters([turn], all);
+    return renderToString(
+      <TooltipProvider>
+        <TurnRow item={visible[0]} query="" currentBlock={-1} currentOcc={-1} openAll={openAll} />
+      </TooltipProvider>,
+    );
+  };
+
+  it("puts a status dot before the tool name: green, red, grey, purple for agents", () => {
+    const html = render([
+      tool("ok", "Bash", { command: "ls" }, { text: "a", isError: false }),
+      tool("err", "Bash", { command: "ls" }, { text: "boom", isError: true }),
+      tool("none", "Bash", { command: "ls" }),
+      tool("agent", "Agent", { description: "x" }, { text: "spawned", isError: false }),
+    ]);
+    expect(html.match(/tool-dot" data-status="([a-z]+)"/g)).toEqual([
+      'tool-dot" data-status="ok"',
+      'tool-dot" data-status="error"',
+      'tool-dot" data-status="none"',
+      'tool-dot" data-status="agent"',
+    ]);
+    expect(toolStatus(tool("x", "Bash", {}, { text: "", isError: false }))).toBe("ok");
+    expect(toolStatus(tool("x", "Bash", {}, { text: "", isError: true }))).toBe("error");
+    expect(toolStatus(tool("x", "Bash", {}))).toBe("none");
+    // Bash summaries take the terminal yellow; the name takes the symbol colour.
+    expect(html).toContain('<span class="tool-fn">Bash</span>');
+    expect(html).toContain('truncate tool-bash">ls</span>');
+  });
+
+  it("computes +N −M for an Edit and +N for a Write, matching the Files tab hunk math", () => {
+    expect(editCounts("Edit", { file_path: "/a.ts", old_string: "a\nb\n", new_string: "a\nb\nc\nd" })).toEqual({ added: 4, removed: 2 });
+    expect(editCounts("Edit", { file_path: "/a.ts", old_string: "", new_string: "x" })).toEqual({ added: 1, removed: 0 });
+    expect(editCounts("MultiEdit", { file_path: "/a.ts", edits: [{ old_string: "a", new_string: "b\nc" }, { old_string: "d\ne", new_string: "" }] })).toEqual({ added: 2, removed: 3 });
+    expect(editCounts("Write", { file_path: "/a.ts", content: "one\ntwo\nthree\n" })).toEqual({ added: 3 });
+    expect(editCounts("NotebookEdit", { notebook_path: "/n.ipynb", new_source: "x" })).toEqual({ added: 1 });
+    expect(editCounts("Bash", { command: "ls" })).toBeUndefined();
+    expect(editCounts("Read", { file_path: "/a.ts" })).toBeUndefined();
+    const html = render([
+      tool("e", "Edit", { file_path: "/a.ts", old_string: "a\nb\n", new_string: "a\nb\nc\nd" }, { text: "ok", isError: false }),
+      tool("w", "Write", { file_path: "/b.ts", content: "one\ntwo\nthree\n" }, { text: "ok", isError: false }),
+    ]);
+    expect(html).toContain('<span class="text-added">+4</span><span class="text-removed"> −2</span>');
+    expect(html).toContain('<span class="text-added">+3</span></span>');
+  });
+
+  it("shows an expanded Edit as a mini diff and a Write as added lines, other tools keep their JSON", () => {
+    const html = render(
+      [
+        tool("e", "Edit", { file_path: "/a.ts", old_string: "old line\n", new_string: "new line\nmore\n" }, { text: "ok", isError: false }),
+        tool("w", "Write", { file_path: "/b.ts", content: "w1\nw2" }, { text: "ok", isError: false }),
+        tool("b", "Bash", { command: "ls -la" }, { text: "out", isError: false }),
+      ],
+      { open: true, seq: 1 },
+    );
+    expect(html).toContain('<div class="line" data-kind="del">- old line</div>');
+    expect(html).toContain('<div class="line" data-kind="add">+ new line</div><div class="line" data-kind="add">+ more</div>');
+    expect(html).toContain('<div class="line" data-kind="add">+ w1</div><div class="line" data-kind="add">+ w2</div>');
+    expect((html.match(/mini-diff/g) ?? []).length).toBe(2);
+    expect(html).toContain(">Edit</div>");
+    expect(html).toContain(">Content</div>");
+    expect(html).toContain(">Input</div><pre");
+    expect(html).toContain("&quot;command&quot;: &quot;ls -la&quot;");
+    // The result sections stay.
+    expect((html.match(/>Result<\/div>/g) ?? []).length).toBe(3);
+    const long = editLines("Write", { content: Array.from({ length: 205 }, (_, i) => `l${i}`).join("\n") });
+    expect(long?.[0].added).toHaveLength(201);
+    expect(long?.[0].added[200]).toBe("… 5 more lines");
+  });
+
+  it("colours the fold count by the run's outcome", () => {
+    const work = (uuid: string, ...blocks: Block[]): Turn => ({ uuid, role: "assistant", kind: "assistant", timestamp: 0, blocks });
+    const ok = tool("o", "Bash", { command: "ls" }, { text: "a", isError: false });
+    const bad = tool("b", "Bash", { command: "ls" }, { text: "a", isError: true });
+    const pending = tool("p", "Bash", { command: "ls" });
+    expect(runStatus([ok, ok])).toBe("ok");
+    expect(runStatus([ok, bad])).toBe("error");
+    expect(runStatus([ok, pending])).toBe("none");
+    expect(runStatus([])).toBe("none");
+    const foldHtml = (...blocks: Block[]) => {
+      const visible = applyFilters([work("w", ...blocks)], all);
+      const { rows } = buildRows(visible, [], new Map());
+      const fold = rows[0];
+      if (fold.kind !== "fold") throw new Error("expected a fold");
+      return renderToString(
+        <TooltipProvider>
+          <FoldRow row={fold} query="" current={undefined} onToggle={() => {}} />
+        </TooltipProvider>,
+      );
+    };
+    expect(foldHtml(ok, ok)).toContain('fold-count shrink-0" data-status="ok">2 tool calls<');
+    expect(foldHtml(ok, bad)).toContain('fold-count shrink-0" data-status="error">2 tool calls<');
+    expect(foldHtml(pending)).toContain('fold-count shrink-0" data-status="none">1 tool call<');
+  });
+
+  it("marks @mentions of known agents in markdown and a yellow rule on usage notices", () => {
+    const html = renderToString(
+      <AgentsContext.Provider value={{ agents: [{ agentId: "a", name: "scripts-agent", description: "", filePath: "", size: 0, status: "done" }], openAgent: () => {} }}>
+        <Markdown text={"Ping @scripts-agent and @nobody; not in `@scripts-agent` code; mail@scripts-agent stays."} query="" />
+      </AgentsContext.Provider>,
+    );
+    expect(html).toContain('Ping <span class="agent-mention">@scripts-agent</span> and @nobody;');
+    expect(html).toContain("<code>@scripts-agent</code>");
+    expect(html).toContain("mail@scripts-agent stays");
+    expect((html.match(/agent-mention/g) ?? []).length).toBe(1);
+    const notices: Turn[] = [
+      { uuid: "n1", role: "user", kind: "notice", subtype: "informational", timestamp: 0, blocks: [{ type: "text", text: "Usage limit reached · continuing at 7pm" }] },
+      { uuid: "n2", role: "user", kind: "notice", subtype: "compact_boundary", timestamp: 0, blocks: [{ type: "text", text: "Conversation compacted" }] },
+    ];
+    const visible = applyFilters(notices, all);
+    const nh = renderToString(
+      <TooltipProvider>
+        {visible.map((v, i) => (
+          <TurnRow key={i} item={v} query="" currentBlock={-1} currentOcc={-1} />
+        ))}
+      </TooltipProvider>,
+    );
+    expect((nh.match(/notice-usage/g) ?? []).length).toBe(1);
+    expect(nh).toMatch(/notice-usage[^>]*>Usage limit reached/);
   });
 });
 
@@ -414,7 +556,7 @@ describe("work folds", () => {
     );
     expect(open).toContain('aria-expanded="true"');
     expect((open.match(/tool-line/g) ?? []).length).toBe(4);
-    expect(open).toContain("Used <!-- -->Bash");
+    expect(open).toContain('Used <span class="tool-fn">Bash</span>');
     expect(open).toContain("Thinking…");
     const single = rows[4];
     if (single.kind !== "fold") throw new Error("expected a fold");
@@ -504,7 +646,7 @@ describe("webview components render on the server", () => {
     expect(bubble).toMatch(/text-right[^>]*>\d\d:\d\d<\/div><\/div><\/div><\/div>/);
     expect(html).toContain("tool-line");
     // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
-    expect(html).toContain("Used <!-- -->Bash");
+    expect(html).toContain('Used <span class="tool-fn">Bash</span>');
     expect(html).toContain(">failed<");
     expect(html).not.toContain("tool-pill");
     expect(html).toContain("Thinking…");

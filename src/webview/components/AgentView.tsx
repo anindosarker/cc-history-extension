@@ -45,7 +45,7 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
           <span className="min-w-0 flex-1 truncate font-medium" title={agent.description}>
             {agent.description}
           </span>
-          <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground max-w-[12rem] truncate">
+          <Badge variant="outline" className="agent-name shrink-0 font-normal max-w-[12rem] truncate">
             {agent.name}
           </Badge>
           <span className="shrink-0 tabular-nums text-muted-foreground text-[11px] whitespace-nowrap ml-1">

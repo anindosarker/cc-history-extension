@@ -41,12 +41,14 @@ export const AgentTurn = memo(function AgentTurn({ item, query, current, time }:
   return (
     <div className="chat-turn py-[10px]" data-turn-index={item.index}>
       <div className="chat-content">
-        <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
+        <Collapsible open={open} onOpenChange={setOpen} className="agent-card tier-2 min-w-0">
           <div
             className="mb-1.5 text-[11px] leading-none select-none"
             title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
           >
-            {["Agent", name, time].filter(Boolean).join(" · ")}
+            {"Agent · "}
+            <span className="agent-name">{name}</span>
+            {time ? ` · ${time}` : ""}
           </div>
           <CollapsibleTrigger asChild>
             <button
@@ -132,6 +134,7 @@ export const RecapTurn = memo(function RecapTurn({ item, query, current }: Omit<
 export const NoticeTurn = memo(function NoticeTurn({ item, query, current }: Omit<Props, "time">) {
   const body = bodyOf(item);
   const ts = item.turn.timestamp;
+  const usage = item.turn.subtype === "informational" && /usage limit/i.test(body);
   return (
     <div className="chat-turn notice-row py-[2px]" data-turn-index={item.index}>
       <div
@@ -139,7 +142,7 @@ export const NoticeTurn = memo(function NoticeTurn({ item, query, current }: Omi
         title={ts ? formatFullDateTime(ts) : undefined}
       >
         <span className="fold-rule h-px flex-1" aria-hidden="true" />
-        <span className="tier-3 min-w-0 max-w-[80%] truncate text-center text-[11px]">
+        <span className={cn("tier-3 min-w-0 max-w-[80%] truncate text-center text-[11px]", usage && "notice-usage")}>
           <Highlight text={body} query={query} current={current} />
         </span>
         <span className="fold-rule h-px flex-1" aria-hidden="true" />

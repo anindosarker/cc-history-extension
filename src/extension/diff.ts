@@ -1,4 +1,7 @@
+import { countLines } from "../shared/editStats";
 import type { Block, FileChange, FileHunk, Turn } from "../shared/types";
+
+export { countLines };
 
 type ToolUse = Extract<Block, { type: "tool_use" }>;
 
@@ -147,14 +150,6 @@ function pushHunk(st: FileState, hunk: FileHunk): void {
   }
   st.change.added += hunk.added;
   st.change.removed += hunk.removed;
-}
-
-export function countLines(s: string): number {
-  if (s === "") return 0;
-  let n = 1;
-  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++;
-  if (s.endsWith("\n")) n--;
-  return n;
 }
 
 /** Remove the "   12\t" prefixes the Read tool adds, and any trailing system reminder. */
