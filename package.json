@@ -2,7 +2,7 @@
   "name": "cc-history",
   "displayName": "Claude Code History",
   "description": "Browse, search, diff and export all of your Claude Code sessions. No time cutoff.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "anindosarker",
   "license": "MIT",
   "private": true,

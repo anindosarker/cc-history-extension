@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Tool lines no longer overflow at narrow widths; MCP tool names show their short form.
+- File path buttons stack under the tool line in narrow panels.
+- Single-segment absolute paths without an extension are no longer linked.
+
 ## 0.3.0
 
 - Two-tier visual hierarchy: message content in a centered 960px column at 14.5px, everything else (tool lines, thinking, folds, system lines, dates) small and dim.
