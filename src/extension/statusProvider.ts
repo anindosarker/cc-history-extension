@@ -5,7 +5,7 @@ import type { Indexer } from "./indexer";
 import { computeStatus, readLiveSessionIds, STATUS_LABEL, type LiveStatus } from "./liveStatus";
 
 export const STATUS_SCHEME = "cc-history-session";
-/** Project rows of the current workspace carry this scheme so they get the "cur" badge. */
+/** Pinned project rows carry this scheme so their label is colored. */
 export const PROJECT_SCHEME = "cc-history-project";
 const POLL_MS = 15_000;
 const WATCH_DEBOUNCE_MS = 500;
@@ -25,9 +25,9 @@ export function projectUri(cwd: string): vscode.Uri {
   return vscode.Uri.from({ scheme: PROJECT_SCHEME, path: p.startsWith("/") ? p : `/${p}` });
 }
 
-/** The badge of a project that belongs to the open workspace. Stateless: only current rows carry the uri. */
-export function currentProjectDecoration(): vscode.FileDecoration {
-  const deco = new vscode.FileDecoration("cur", "In the current workspace", new vscode.ThemeColor("charts.blue"));
+/** Colors a pinned project's label. Stateless: only pinned rows carry the uri. */
+export function pinnedProjectDecoration(): vscode.FileDecoration {
+  const deco = new vscode.FileDecoration(undefined, "Pinned above the sort order", new vscode.ThemeColor("charts.blue"));
   deco.propagate = false;
   return deco;
 }
@@ -83,7 +83,7 @@ export class SessionStatusProvider implements vscode.FileDecorationProvider, vsc
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    if (uri.scheme === PROJECT_SCHEME) return currentProjectDecoration();
+    if (uri.scheme === PROJECT_SCHEME) return pinnedProjectDecoration();
     if (uri.scheme !== STATUS_SCHEME) return undefined;
     const status = this.statuses.get(uri.path.slice(1));
     if (!status) return undefined;

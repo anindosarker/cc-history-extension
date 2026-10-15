@@ -10,8 +10,13 @@ import { projectUri, statusUri, type SessionStatusProvider } from "./statusProvi
 import { relativeTime } from "./time";
 import {
   buildTreeModel,
-  pinCurrentProjects,
+  isCurrentProject,
+  projectContextValue,
+  projectTooltip,
+  resolvePinned,
   sortSessions,
+  togglePin,
+  type ManualPins,
   type PinOptions,
   type TreeRow,
 } from "./treeModel";
@@ -22,8 +27,30 @@ const REFRESH_DEBOUNCE_MS = 3000;
 export class ProjectNode {
   constructor(
     readonly group: ProjectGroup,
-    readonly current = false,
+    readonly row: Pick<TreeRow, "current" | "pinned" | "pinSource">,
   ) {}
+}
+
+const PINS_KEY = "ccHistory.pins";
+const UNPINS_KEY = "ccHistory.unpins";
+
+/** Manual pins and unpins, kept per workspace in workspaceState. */
+export class PinStore {
+  constructor(private readonly state: vscode.Memento) {}
+
+  get manual(): ManualPins {
+    return { pins: this.list(PINS_KEY), unpins: this.list(UNPINS_KEY) };
+  }
+
+  async set(manual: ManualPins): Promise<void> {
+    await this.state.update(PINS_KEY, [...manual.pins]);
+    await this.state.update(UNPINS_KEY, [...manual.unpins]);
+  }
+
+  private list(key: string): string[] {
+    const v = this.state.get<unknown>(key);
+    return Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : [];
+  }
 }
 
 export class SessionNode {
@@ -52,6 +79,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly emitter = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sessionIcon: vscode.Uri;
+  private readonly pinIcon: { light: vscode.Uri; dark: vscode.Uri };
   private signature = "";
   private pending: NodeJS.Timeout | undefined;
 
@@ -59,8 +87,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     private readonly indexer: Indexer,
     private readonly status: SessionStatusProvider,
     extensionUri: vscode.Uri,
+    private readonly pins: PinStore,
   ) {
     this.sessionIcon = vscode.Uri.joinPath(extensionUri, "media", "session-claude.svg");
+    this.pinIcon = {
+      light: vscode.Uri.joinPath(extensionUri, "media", "pin-light.svg"),
+      dark: vscode.Uri.joinPath(extensionUri, "media", "pin-dark.svg"),
+    };
     indexer.onDidChange(() => this.scheduleRefresh());
     status.onDidChange(() => this.scheduleRefresh());
   }
@@ -85,10 +118,26 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }, REFRESH_DEBOUNCE_MS);
   }
 
+  /** Pin a project above the sort order and redraw at once. */
+  async pin(cwd: string): Promise<void> {
+    await this.setPin("pin", cwd);
+  }
+
+  async unpin(cwd: string): Promise<void> {
+    await this.setPin("unpin", cwd);
+  }
+
+  private async setPin(action: "pin" | "unpin", cwd: string): Promise<void> {
+    const current = isCurrentProject(cwd, workspaceFolderPaths(), PIN_OPTIONS);
+    await this.pins.set(togglePin(action, cwd, current, this.pins.manual));
+    this.refresh();
+  }
+
   private computeSignature(): string {
     const projects = this.indexer.projects;
-    const pinned = pinCurrentProjects(projects, workspaceFolderPaths(), PIN_OPTIONS)
-      .current.map((g) => g.cwd)
+    const pinned = resolvePinned(projects, workspaceFolderPaths(), this.pins.manual, PIN_OPTIONS)
+      .filter((st) => st.pinned)
+      .map((st) => `${st.cwd}:${st.pinSource}`)
       .join(",");
     const body = projects
       .map(
@@ -109,16 +158,16 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.emitter.dispose();
   }
 
-  /** The root rows as the tree shows them: current projects, then other projects. */
+  /** The root rows as the tree shows them: pinned projects, then the rest. */
   rootRows(): TreeRow[] {
-    return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy(), PIN_OPTIONS);
+    return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy(), PIN_OPTIONS, this.pins.manual);
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
       const rows = this.rootRows();
       void vscode.commands.executeCommand("setContext", "ccHistory.empty", rows.length === 0);
-      return rows.map((r) => new ProjectNode(r.group, r.current));
+      return rows.map((r) => new ProjectNode(r.group, r));
     }
     if (element instanceof ProjectNode) {
       return sortSessions(element.group.sessions, getSortBy()).map((s) => new SessionNode(s));
@@ -132,11 +181,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       const item = new vscode.TreeItem(g.name, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `project:${g.cwd}`;
       item.description = `${g.sessions.length} session${g.sessions.length === 1 ? "" : "s"}`;
-      item.tooltip = element.current ? `${g.cwd}\nIn the current workspace` : g.cwd;
-      item.iconPath = new vscode.ThemeIcon("folder");
-      item.contextValue = "project";
-      // Only current projects carry the resource uri, so only they get the "cur" badge.
-      if (element.current) item.resourceUri = projectUri(g.cwd);
+      const { current, pinned, pinSource } = element.row;
+      item.tooltip = projectTooltip({ cwd: g.cwd, current, pinned, ...(pinSource ? { pinSource } : {}) });
+      // Pinned rows swap the folder for a filled pin: the only always-visible icon slot a tree row has.
+      item.iconPath = pinned ? this.pinIcon : new vscode.ThemeIcon("folder");
+      item.contextValue = projectContextValue(pinned);
+      // Only pinned projects carry the resource uri, so only they get the blue label.
+      if (pinned) item.resourceUri = projectUri(g.cwd);
       return item;
     }
     const m = element.meta;

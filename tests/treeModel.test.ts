@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { groupByProject, type ProjectGroup } from "../src/extension/indexScan";
 import {
   buildTreeModel,
+  projectContextValue,
+  projectTooltip,
+  resolvePinned,
+  togglePin,
   isCurrentProject,
   normalizeSortBy,
   pinCurrentProjects,
@@ -190,7 +194,67 @@ describe("buildTreeModel", () => {
     expect(labels(buildTreeModel([app, wt], [ws], "activity"))).toEqual(["feat", "app"]);
   });
 
+  it("puts a manually pinned non-current project among the pinned rows, in the same sort", () => {
+    const manual = { pins: ["/Users/me/Other/two"], unpins: [] };
+    const rows = buildTreeModel(projects, [ws], "activity", {}, manual);
+    expect(labels(rows)).toEqual(["feat", "app", "two", "one"]);
+    expect(rows.map((r) => r.pinned)).toEqual([true, true, true, false]);
+    expect(rows.map((r) => r.pinSource)).toEqual(["workspace", "workspace", "manual", undefined]);
+    expect(rows.map((r) => r.current)).toEqual([true, true, false, false]);
+    // Unpinning a current project drops it into the rest, still flagged current.
+    const unpinned = buildTreeModel(projects, [ws], "activity", {}, { pins: [], unpins: [ws] });
+    expect(labels(unpinned)).toEqual(["feat", "one", "app", "two"]);
+    expect(unpinned[2]).toMatchObject({ current: true, pinned: false });
+    expect(unpinned[2].pinSource).toBeUndefined();
+  });
+
   it("is empty for no projects", () => {
     expect(buildTreeModel([], [ws], "activity")).toEqual([]);
+  });
+});
+
+describe("resolvePinned and togglePin", () => {
+  const cur = { cwd: ws };
+  const other = { cwd: "/Users/me/Other/one" };
+
+  it("pins current projects unless unpinned by hand, and manual pins regardless", () => {
+    const plain = resolvePinned([cur, other], [ws]);
+    expect(plain.map((s) => [s.current, s.pinned, s.pinSource])).toEqual([
+      [true, true, "workspace"],
+      [false, false, undefined],
+    ]);
+    const manual = resolvePinned([cur, other], [ws], { pins: ["/Users/me/Other/one/"], unpins: [ws + "/"] });
+    expect(manual.map((s) => [s.current, s.pinned, s.pinSource])).toEqual([
+      [true, false, undefined],
+      [false, true, "manual"],
+    ]);
+    // A manual pin on a current project wins over its unpin.
+    const both = resolvePinned([cur], [ws], { pins: [ws], unpins: [ws] });
+    expect(both[0]).toMatchObject({ current: true, pinned: true, pinSource: "manual" });
+    expect(resolvePinned([cur, other], [])[0].pinned).toBe(false);
+  });
+
+  it("records pins and unpins without duplicates and clears the opposite choice", () => {
+    const none = { pins: [], unpins: [] };
+    expect(togglePin("pin", other.cwd, false, none)).toEqual({ pins: [other.cwd], unpins: [] });
+    expect(togglePin("pin", other.cwd, false, { pins: [other.cwd], unpins: [] })).toEqual({ pins: [other.cwd], unpins: [] });
+    expect(togglePin("unpin", other.cwd, false, { pins: [other.cwd], unpins: [] })).toEqual(none);
+    // A current project: unpin records it, pin forgets the unpin and adds nothing.
+    expect(togglePin("unpin", ws, true, none)).toEqual({ pins: [], unpins: [ws] });
+    expect(togglePin("pin", ws, true, { pins: [], unpins: [ws] })).toEqual(none);
+    expect(togglePin("pin", ws + "/", true, { pins: [], unpins: [ws] })).toEqual(none);
+  });
+
+  it("names the context value and the tooltip per state", () => {
+    expect(projectContextValue(true)).toBe("project-pinned");
+    expect(projectContextValue(false)).toBe("project-unpinned");
+    expect(projectTooltip({ cwd: ws, current: true, pinned: true, pinSource: "workspace" })).toBe(
+      `${ws}\nPinned above the sort order (inside the current workspace). Click the pin to unpin.`,
+    );
+    expect(projectTooltip({ cwd: "/x", current: false, pinned: true, pinSource: "manual" })).toBe(
+      "/x\nPinned above the sort order (pinned manually). Click the pin to unpin.",
+    );
+    expect(projectTooltip({ cwd: ws, current: true, pinned: false })).toBe(`${ws}\nInside the current workspace, unpinned`);
+    expect(projectTooltip({ cwd: "/x", current: false, pinned: false })).toBe("/x");
   });
 });

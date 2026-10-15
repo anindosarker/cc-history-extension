@@ -12,7 +12,7 @@ import { loadSessionData, SessionPanelManager } from "./sessionPanel";
 import { SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
 import { SORT_DETAIL, SORT_LABEL, SORT_MODES, sortSessions, type SortBy } from "./treeModel";
-import { SessionNode, SessionTreeProvider, type TreeNode } from "./treeProvider";
+import { PinStore, SessionNode, SessionTreeProvider, type TreeNode } from "./treeProvider";
 import { UsageStatusBar } from "./usage/statusBar";
 import { UsagePanelManager } from "./usage/usagePanel";
 import { UsagePoller } from "./usage/usagePoller";
@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const indexer = new Indexer(context);
   const status = new SessionStatusProvider(indexer);
   status.setEnabled(getShowStatus());
-  const tree = new SessionTreeProvider(indexer, status, context.extensionUri);
+  const tree = new SessionTreeProvider(indexer, status, context.extensionUri, new PinStore(context.workspaceState));
   const diffs = new DiffContentProvider();
   const panels = new SessionPanelManager(context, diffs, indexer);
   const view = vscode.window.createTreeView("ccHistory.sessions", { treeDataProvider: tree, showCollapseAll: true });
@@ -96,6 +96,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("ccHistory.copyProjectPath", async (arg?: unknown) => {
       const cwd = projectCwdFrom(arg);
       if (cwd) await copyPath(cwd);
+    }),
+    vscode.commands.registerCommand("ccHistory.pinProject", async (arg?: unknown) => {
+      const cwd = projectCwdFrom(arg);
+      if (cwd) await tree.pin(cwd);
+    }),
+    vscode.commands.registerCommand("ccHistory.unpinProject", async (arg?: unknown) => {
+      const cwd = projectCwdFrom(arg);
+      if (cwd) await tree.unpin(cwd);
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("ccHistory.projectsDir")) {

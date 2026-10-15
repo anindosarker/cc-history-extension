@@ -125,6 +125,18 @@
         "category": "Claude Code History"
       },
       {
+        "command": "ccHistory.pinProject",
+        "title": "Pin to top",
+        "category": "Claude Code History",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "ccHistory.unpinProject",
+        "title": "Unpin",
+        "category": "Claude Code History",
+        "icon": "$(pinned)"
+      },
+      {
         "command": "ccHistory.refreshUsage",
         "title": "Refresh Usage",
         "category": "Claude Code History",
@@ -162,13 +174,33 @@
       ],
       "view/item/context": [
         {
+          "command": "ccHistory.pinProject",
+          "when": "view == ccHistory.sessions && viewItem == project-unpinned",
+          "group": "inline@1"
+        },
+        {
+          "command": "ccHistory.unpinProject",
+          "when": "view == ccHistory.sessions && viewItem == project-pinned",
+          "group": "inline@1"
+        },
+        {
+          "command": "ccHistory.pinProject",
+          "when": "view == ccHistory.sessions && viewItem == project-unpinned",
+          "group": "0_pin@1"
+        },
+        {
+          "command": "ccHistory.unpinProject",
+          "when": "view == ccHistory.sessions && viewItem == project-pinned",
+          "group": "0_pin@1"
+        },
+        {
           "command": "ccHistory.revealProject",
-          "when": "view == ccHistory.sessions && viewItem == project",
+          "when": "view == ccHistory.sessions && viewItem =~ /^project-/",
           "group": "1_project@1"
         },
         {
           "command": "ccHistory.copyProjectPath",
-          "when": "view == ccHistory.sessions && viewItem == project",
+          "when": "view == ccHistory.sessions && viewItem =~ /^project-/",
           "group": "1_project@2"
         },
         {
@@ -200,6 +232,14 @@
       "commandPalette": [
         {
           "command": "ccHistory.openSession",
+          "when": "false"
+        },
+        {
+          "command": "ccHistory.pinProject",
+          "when": "false"
+        },
+        {
+          "command": "ccHistory.unpinProject",
           "when": "false"
         },
         {

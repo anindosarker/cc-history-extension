@@ -70,7 +70,7 @@ Or in VS Code: Extensions view, the `...` menu, "Install from VSIX...".
 - Click the asterisk icon in the activity bar to open the Sessions view.
 - Click a session to open it. Right-click for Resume, Export, Copy Session ID and Reveal JSONL.
 - Use the search icon in the view title (or the "Claude Code History: Find Session" command) to search across all sessions.
-- Projects of the folders open in the current window are listed first with a blue `cur` badge. Other projects follow below them.
+- Projects of the folders open in the current window are pinned to the top and show a filled pin instead of the folder icon. Hover a project row for the pin action: pin any project above the sort order or unpin a current one. Pins are remembered per workspace.
 - Use the sort icon in the view title (or the "Claude Code History: Sort by..." command) to order projects and sessions by last activity, name or session count. The choice also orders Find Session.
 - A session that is still running shows a blue "Live" dot in the header and picks up new messages as Claude Code writes them. Scroll up and a "N new messages" pill appears instead; the reload icon re-reads the whole transcript.
 - The Agents button lists subagents in spawn order, name first like Claude Code's own list, with a check for done, a pulsing dot for running and a red x for failed.

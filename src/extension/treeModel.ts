@@ -26,8 +26,28 @@ export function normalizeSortBy(value: unknown): SortBy {
     : DEFAULT_SORT_BY;
 }
 
-/** A row of the Sessions tree root: a project, flagged when it belongs to the current workspace. */
-export type TreeRow = { kind: "project"; group: ProjectGroup; current: boolean };
+/** Why a project sits above the sort order: it belongs to the open workspace, or the user pinned it. */
+export type PinSource = "workspace" | "manual";
+
+/** A row of the Sessions tree root: a project, with whether it is current and whether it is pinned. */
+export type TreeRow = { kind: "project"; group: ProjectGroup; current: boolean; pinned: boolean; pinSource?: PinSource };
+
+/** Manual choices kept in workspaceState: cwds pinned by hand, and current cwds unpinned by hand. */
+export interface ManualPins {
+  pins: readonly string[];
+  unpins: readonly string[];
+}
+
+export const NO_MANUAL_PINS: ManualPins = { pins: [], unpins: [] };
+
+export interface PinState {
+  cwd: string;
+  /** Belongs to the open workspace (isCurrentProject). */
+  current: boolean;
+  /** Shown above the sort order. */
+  pinned: boolean;
+  pinSource?: PinSource;
+}
 
 
 /**
@@ -96,6 +116,65 @@ export function pinCurrentProjects<T extends { cwd: string }>(
   return { current, other };
 }
 
+function pathSet(paths: readonly string[]): Set<string> {
+  return new Set(paths.map(normalizePath));
+}
+
+/**
+ * Pinned state per project, in input order: a manual pin always pins; a current project is pinned
+ * unless it was unpinned by hand; anything else is unpinned.
+ */
+export function resolvePinned<T extends { cwd: string }>(
+  projects: readonly T[],
+  workspaceFolderPaths: readonly string[],
+  manual: ManualPins = NO_MANUAL_PINS,
+  opts: PinOptions = {},
+): (PinState & { project: T })[] {
+  const pins = pathSet(manual.pins);
+  const unpins = pathSet(manual.unpins);
+  return projects.map((project) => {
+    const key = normalizePath(project.cwd);
+    const current = isCurrentProject(project.cwd, workspaceFolderPaths, opts);
+    const state: PinState & { project: T } = { cwd: project.cwd, current, pinned: false, project };
+    if (pins.has(key)) {
+      state.pinned = true;
+      state.pinSource = "manual";
+    } else if (current && !unpins.has(key)) {
+      state.pinned = true;
+      state.pinSource = "workspace";
+    }
+    return state;
+  });
+}
+
+/**
+ * The manual lists after pinning or unpinning one project. Pinning a current project only forgets
+ * its unpin; pinning another adds it. Unpinning forgets a manual pin, and for a current project
+ * records the unpin so the workspace rule stops applying.
+ */
+export function togglePin(action: "pin" | "unpin", cwd: string, current: boolean, manual: ManualPins): ManualPins {
+  const key = normalizePath(cwd);
+  const without = (list: readonly string[]) => list.filter((p) => normalizePath(p) !== key);
+  if (action === "pin") {
+    return { pins: current ? without(manual.pins) : [...without(manual.pins), cwd], unpins: without(manual.unpins) };
+  }
+  return { pins: without(manual.pins), unpins: current ? [...without(manual.unpins), cwd] : without(manual.unpins) };
+}
+
+export function projectContextValue(pinned: boolean): "project-pinned" | "project-unpinned" {
+  return pinned ? "project-pinned" : "project-unpinned";
+}
+
+/** The hover text of a project row: its path, then what the pin means for it. */
+export function projectTooltip(state: PinState): string {
+  if (state.pinned) {
+    const why = state.pinSource === "manual" ? "pinned manually" : "inside the current workspace";
+    return `${state.cwd}\nPinned above the sort order (${why}). Click the pin to unpin.`;
+  }
+  if (state.current) return `${state.cwd}\nInside the current workspace, unpinned`;
+  return state.cwd;
+}
+
 /** Case-insensitive A to Z; names that differ only by case compare equal. */
 function byNameBase(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -143,20 +222,25 @@ export function sortSessions(sessions: readonly SessionMeta[], sortBy: SortBy): 
 }
 
 /**
- * The root rows of the Sessions tree: current projects first, then the rest.
- * No pinning when nothing is current.
+ * The root rows of the Sessions tree: pinned projects first (sorted among themselves), then the
+ * rest in the same sort.
  */
 export function buildTreeModel(
   projects: readonly ProjectGroup[],
   workspaceFolderPaths: readonly string[],
   sortBy: SortBy,
   opts: PinOptions = {},
+  manual: ManualPins = NO_MANUAL_PINS,
 ): TreeRow[] {
-  const { current, other } = pinCurrentProjects(projects, workspaceFolderPaths, opts);
-  if (current.length === 0) return sortProjects(projects, sortBy).map((group) => ({ kind: "project", group, current: false }));
-  const rows: TreeRow[] = sortProjects(current, sortBy).map((group) => ({ kind: "project", group, current: true }));
-  if (other.length > 0) {
-    for (const group of sortProjects(other, sortBy)) rows.push({ kind: "project", group, current: false });
-  }
-  return rows;
+  const states = resolvePinned(projects, workspaceFolderPaths, manual, opts);
+  const byCwd = new Map(states.map((st) => [st.project, st]));
+  const row = (group: ProjectGroup): TreeRow => {
+    const st = byCwd.get(group)!;
+    const out: TreeRow = { kind: "project", group, current: st.current, pinned: st.pinned };
+    if (st.pinSource) out.pinSource = st.pinSource;
+    return out;
+  };
+  const pinned = states.filter((st) => st.pinned).map((st) => st.project);
+  const rest = states.filter((st) => !st.pinned).map((st) => st.project);
+  return [...sortProjects(pinned, sortBy).map(row), ...sortProjects(rest, sortBy).map(row)];
 }
