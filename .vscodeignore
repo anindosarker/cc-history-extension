@@ -19,3 +19,4 @@ pnpm-workspace.yaml
 *.vsix
 **/*.map
 .ai/**
+CLAUDE.md
