@@ -38,11 +38,24 @@ export type Block =
       result?: ToolResult;
     };
 
+/**
+ * What a turn is. "agent" and "system" are user records injected by tooling
+ * (teammate messages, system reminders, command echoes) rather than typed by a person.
+ */
+export type TurnKind = "user" | "assistant" | "agent" | "system";
+
 export interface Turn {
   uuid: string;
   role: "user" | "assistant";
+  kind: TurnKind;
   timestamp: number;
   blocks: Block[];
+  /** Agent turns: who sent the message. */
+  agentName?: string;
+  /** Agent turns: the one-line summary attribute, when present. */
+  summary?: string;
+  /** System turns: short label derived from the tag, like "task notification". */
+  label?: string;
 }
 
 export interface FileHunk {

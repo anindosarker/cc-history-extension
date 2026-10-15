@@ -52,7 +52,7 @@ export class IndexBuilder {
     if (typeof r.gitBranch === "string" && r.gitBranch) this.gitBranch = r.gitBranch;
 
     const kind = classifyRecord(r);
-    if (kind === "skip" && r.type === "user" && !this.firstCommand) {
+    if (kind === "system" && !this.firstCommand) {
       this.firstCommand = extractCommandName(r.message?.content);
     }
     if (kind === "skip" || kind === "toolResultOnly") return;
@@ -60,6 +60,11 @@ export class IndexBuilder {
     if (ts) {
       if (this.startedAt === undefined) this.startedAt = ts;
       this.lastActivityAt = Math.max(this.lastActivityAt ?? 0, ts);
+    }
+    // Injected agent and system records are displayed but are neither prompts nor counted messages.
+    if (kind === "agent" || kind === "system") {
+      this.lastAssistantMsgId = undefined;
+      return;
     }
     if (kind === "user") {
       this.lastAssistantMsgId = undefined;

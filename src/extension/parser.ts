@@ -5,9 +5,12 @@ import {
   asRecord,
   blocksOf,
   classifyRecord,
+  parseAgentText,
   parseTimestamp,
+  systemLabel,
   toolResultText,
   userPlainText,
+  userRawText,
   type RawRecord,
 } from "./records";
 
@@ -47,17 +50,25 @@ export class SessionBuilder {
       this.attachResults(r);
       return;
     }
-    if (kind === "user") {
+    if (kind === "user" || kind === "agent" || kind === "system") {
       this.attachResults(r);
-      const turn: Turn = {
-        uuid: r.uuid ?? `u-${this.result.turns.length}`,
-        role: "user",
-        timestamp: ts,
-        blocks: this.userBlocks(r),
-      };
-      if (!this.result.firstPrompt) {
-        const text = userPlainText(r.message?.content);
-        if (text) this.result.firstPrompt = text;
+      const uuid = r.uuid ?? `u-${this.result.turns.length}`;
+      let turn: Turn;
+      if (kind === "user") {
+        turn = { uuid, role: "user", kind, timestamp: ts, blocks: this.userBlocks(r) };
+        if (!this.result.firstPrompt) {
+          const text = userPlainText(r.message?.content);
+          if (text) this.result.firstPrompt = text;
+        }
+      } else if (kind === "agent") {
+        const msg = parseAgentText(userRawText(r.message?.content));
+        turn = { uuid, role: "user", kind, timestamp: ts, blocks: [{ type: "text", text: msg.body }] };
+        if (msg.agentName) turn.agentName = msg.agentName;
+        if (msg.summary) turn.summary = msg.summary;
+      } else {
+        const raw = userRawText(r.message?.content);
+        turn = { uuid, role: "user", kind, timestamp: ts, blocks: [{ type: "text", text: raw }] };
+        turn.label = systemLabel(raw) ?? "system";
       }
       this.lastAssistantMsgId = undefined;
       this.appendTurn(turn, ts);
@@ -73,7 +84,7 @@ export class SessionBuilder {
     }
     this.lastAssistantMsgId = msgId;
     this.appendTurn(
-      { uuid: r.uuid ?? `a-${this.result.turns.length}`, role: "assistant", timestamp: ts, blocks },
+      { uuid: r.uuid ?? `a-${this.result.turns.length}`, role: "assistant", kind: "assistant", timestamp: ts, blocks },
       ts,
     );
   }

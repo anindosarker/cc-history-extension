@@ -28,7 +28,7 @@ describe("parser", () => {
     expect(s.sessionId).toBe("sess-1");
   });
 
-  it("skips meta, sidechain and slash-command noise", () => {
+  it("drops meta and sidechain records and files slash-command noise as system turns", () => {
     const text = [
       userMsg("<command-name>/clear</command-name>"),
       userMsg("<local-command-stdout>ok</local-command-stdout>"),
@@ -40,7 +40,10 @@ describe("parser", () => {
       userMsg("real prompt"),
     ].join("\n");
     const s = parseSessionText(text);
-    expect(s.turns).toHaveLength(1);
+    // Slash-command echoes are kept as collapsed system turns; meta, sidechain and junk lines are dropped.
+    expect(s.turns.map((t) => t.kind)).toEqual(["system", "system", "user"]);
+    expect(s.turns[0].label).toBe("command /clear");
+    expect(s.turns[1].label).toBe("command output");
     expect(s.firstPrompt).toBe("real prompt");
   });
 

@@ -16,13 +16,27 @@ export function buildTranscript(data: SessionData, opts: ExportOptions): string 
   lines.push(`Session: ${meta.sessionId}`);
   lines.push("");
   for (const turn of data.turns) {
+    if (turn.kind === "system" && !opts.includeToolResults) continue;
     const body = renderTurn(turn, opts);
     if (!body) continue;
-    lines.push(turn.role === "user" ? "User:" : "Assistant:");
+    lines.push(turnHeading(turn));
     lines.push(body);
     lines.push("");
   }
   return lines.join("\n").trimEnd() + "\n";
+}
+
+function turnHeading(turn: Turn): string {
+  switch (turn.kind) {
+    case "assistant":
+      return "Assistant:";
+    case "agent":
+      return turn.agentName ? `Agent (${turn.agentName}):` : "Agent:";
+    case "system":
+      return turn.label ? `System (${turn.label}):` : "System:";
+    default:
+      return "User:";
+  }
 }
 
 function renderTurn(turn: Turn, opts: ExportOptions): string {

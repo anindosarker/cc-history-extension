@@ -19,10 +19,11 @@ const data: SessionData = {
   },
   files: [],
   turns: [
-    { uuid: "1", role: "user", timestamp: 0, blocks: [{ type: "text", text: "Please fix it" }] },
+    { uuid: "1", role: "user", kind: "user", timestamp: 0, blocks: [{ type: "text", text: "Please fix it" }] },
     {
       uuid: "2",
       role: "assistant",
+      kind: "assistant",
       timestamp: 0,
       blocks: [
         { type: "thinking", thinking: "private" },

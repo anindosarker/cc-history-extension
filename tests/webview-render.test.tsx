@@ -12,12 +12,14 @@ const turns: Turn[] = [
   {
     uuid: "1",
     role: "user",
+    kind: "user",
     timestamp: 0,
     blocks: [{ type: "text", text: "Fix **bold** thing\n\n```ts\nconst x = 1;\n```" }],
   },
   {
     uuid: "2",
     role: "assistant",
+    kind: "assistant",
     timestamp: 0,
     blocks: [
       { type: "thinking", thinking: "thinking about thing" },
@@ -44,6 +46,72 @@ describe("search", () => {
     const noThinking = applyFilters(turns, { role: "all", showThinking: false, showTools: true });
     expect(findMatches(noThinking, "thing")).toHaveLength(5);
     expect(applyFilters(turns, { role: "user", showThinking: true, showTools: true })).toHaveLength(1);
+  });
+});
+
+describe("agent and system turns in filters", () => {
+  const mixed: Turn[] = [
+    { uuid: "1", role: "user", kind: "user", timestamp: 0, blocks: [{ type: "text", text: "do it" }] },
+    {
+      uuid: "2",
+      role: "user",
+      kind: "agent",
+      agentName: "scripts-agent",
+      summary: "done",
+      timestamp: 0,
+      blocks: [{ type: "text", text: "Finished it" }],
+    },
+    { uuid: "3", role: "assistant", kind: "assistant", timestamp: 0, blocks: [{ type: "text", text: "Great" }] },
+    {
+      uuid: "4",
+      role: "user",
+      kind: "system",
+      label: "task notification",
+      timestamp: 0,
+      blocks: [{ type: "text", text: "<task-notification>finished</task-notification>" }],
+    },
+  ];
+
+  it("role filter keeps only real user or assistant turns, and the tool toggle hides system turns", () => {
+    const kinds = (visible: ReturnType<typeof applyFilters>) => visible.map((v) => v.turn.kind);
+    expect(kinds(applyFilters(mixed, { role: "all", showThinking: true, showTools: true }))).toEqual([
+      "user",
+      "agent",
+      "assistant",
+      "system",
+    ]);
+    expect(kinds(applyFilters(mixed, { role: "user", showThinking: true, showTools: true }))).toEqual(["user"]);
+    expect(kinds(applyFilters(mixed, { role: "assistant", showThinking: true, showTools: true }))).toEqual(["assistant"]);
+    expect(kinds(applyFilters(mixed, { role: "all", showThinking: true, showTools: false }))).toEqual([
+      "user",
+      "agent",
+      "assistant",
+    ]);
+  });
+
+  it("search still indexes agent and system bodies", () => {
+    const all = applyFilters(mixed, { role: "all", showThinking: true, showTools: true });
+    expect(findMatches(all, "finished")).toEqual([
+      { turnIndex: 1, blockIndex: 0, occ: 0 },
+      { turnIndex: 3, blockIndex: 0, occ: 0 },
+    ]);
+  });
+
+  it("renders an agent card and a system one-liner without bubbles", () => {
+    const all = applyFilters(mixed, { role: "all", showThinking: true, showTools: true });
+    const html = renderToString(
+      <TooltipProvider>
+        {all.map((v, i) => (
+          <TurnRow key={i} item={v} query="" currentBlock={-1} currentOcc={-1} />
+        ))}
+      </TooltipProvider>,
+    );
+    expect(html).toContain("Agent · scripts-agent");
+    expect(html).toContain(">done<");
+    expect(html).toContain("System · task notification");
+    expect((html.match(/chat-bubble/g) ?? []).length).toBe(1);
+    // Collapsed bodies stay out of the DOM.
+    expect(html).not.toContain("Finished it");
   });
 });
 

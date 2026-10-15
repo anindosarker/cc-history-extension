@@ -21,7 +21,7 @@ export async function loadSessionData(meta: SessionMeta): Promise<SessionData> {
     gitBranch: parsed.gitBranch ?? meta.gitBranch,
     startedAt: parsed.startedAt ?? meta.startedAt,
     lastActivityAt: parsed.lastActivityAt ?? meta.lastActivityAt,
-    messageCount: parsed.turns.length,
+    messageCount: parsed.turns.filter((t) => t.kind === "user" || t.kind === "assistant").length,
   };
   return { meta: merged, turns: parsed.turns, files: extractFileChanges(parsed.turns) };
 }
