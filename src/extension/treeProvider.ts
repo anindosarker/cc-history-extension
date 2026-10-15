@@ -10,9 +10,6 @@ import { projectUri, statusUri, type SessionStatusProvider } from "./statusProvi
 import { relativeTime } from "./time";
 import {
   buildTreeModel,
-  DIVIDER_LABEL,
-  DIVIDER_RULE,
-  DIVIDER_TOOLTIP,
   pinCurrentProjects,
   sortSessions,
   type PinOptions,
@@ -33,10 +30,7 @@ export class SessionNode {
   constructor(readonly meta: SessionMeta) {}
 }
 
-/** The "Other projects" row between the current workspace's projects and the rest. */
-export class DividerNode {}
-
-export type TreeNode = ProjectNode | SessionNode | DividerNode;
+export type TreeNode = ProjectNode | SessionNode;
 
 /** A project that contains a workspace folder is pinned only when it is a repository root. */
 const PIN_OPTIONS: PinOptions = {
@@ -115,7 +109,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.emitter.dispose();
   }
 
-  /** The root rows as the tree shows them: current projects, divider, other projects. */
+  /** The root rows as the tree shows them: current projects, then other projects. */
   rootRows(): TreeRow[] {
     return buildTreeModel(this.indexer.projects, workspaceFolderPaths(), getSortBy(), PIN_OPTIONS);
   }
@@ -124,7 +118,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     if (!element) {
       const rows = this.rootRows();
       void vscode.commands.executeCommand("setContext", "ccHistory.empty", rows.length === 0);
-      return rows.map((r) => (r.kind === "divider" ? new DividerNode() : new ProjectNode(r.group, r.current)));
+      return rows.map((r) => new ProjectNode(r.group, r.current));
     }
     if (element instanceof ProjectNode) {
       return sortSessions(element.group.sessions, getSortBy()).map((s) => new SessionNode(s));
@@ -133,15 +127,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
-    if (element instanceof DividerNode) {
-      // A thin rule: empty label, the dashes as muted description, no icon, nothing to click.
-      const item = new vscode.TreeItem(DIVIDER_LABEL, vscode.TreeItemCollapsibleState.None);
-      item.id = "divider";
-      item.description = DIVIDER_RULE;
-      item.tooltip = DIVIDER_TOOLTIP;
-      item.contextValue = "divider";
-      return item;
-    }
     if (element instanceof ProjectNode) {
       const g = element.group;
       const item = new vscode.TreeItem(g.name, vscode.TreeItemCollapsibleState.Collapsed);

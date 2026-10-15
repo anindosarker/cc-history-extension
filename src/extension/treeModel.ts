@@ -26,13 +26,9 @@ export function normalizeSortBy(value: unknown): SortBy {
     : DEFAULT_SORT_BY;
 }
 
-/** A row of the Sessions tree root: a project, or the divider between current and other projects. */
-export type TreeRow = { kind: "project"; group: ProjectGroup; current: boolean } | { kind: "divider" };
+/** A row of the Sessions tree root: a project, flagged when it belongs to the current workspace. */
+export type TreeRow = { kind: "project"; group: ProjectGroup; current: boolean };
 
-/** The divider between current and other projects is a thin rule: an empty label and a run of box-drawing dashes. */
-export const DIVIDER_LABEL = "";
-export const DIVIDER_RULE = "\u2500".repeat(40);
-export const DIVIDER_TOOLTIP = "Projects outside the current workspace";
 
 /**
  * Forward slashes, no trailing slash, and case-folded for Windows drive paths so a cwd
@@ -147,8 +143,8 @@ export function sortSessions(sessions: readonly SessionMeta[], sortBy: SortBy): 
 }
 
 /**
- * The root rows of the Sessions tree: current projects first, then a divider, then the rest.
- * No divider and no pinning when nothing is current.
+ * The root rows of the Sessions tree: current projects first, then the rest.
+ * No pinning when nothing is current.
  */
 export function buildTreeModel(
   projects: readonly ProjectGroup[],
@@ -160,7 +156,6 @@ export function buildTreeModel(
   if (current.length === 0) return sortProjects(projects, sortBy).map((group) => ({ kind: "project", group, current: false }));
   const rows: TreeRow[] = sortProjects(current, sortBy).map((group) => ({ kind: "project", group, current: true }));
   if (other.length > 0) {
-    rows.push({ kind: "divider" });
     for (const group of sortProjects(other, sortBy)) rows.push({ kind: "project", group, current: false });
   }
   return rows;

@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { groupByProject, type ProjectGroup } from "../src/extension/indexScan";
 import {
   buildTreeModel,
-  DIVIDER_LABEL,
-  DIVIDER_RULE,
   isCurrentProject,
   normalizeSortBy,
   pinCurrentProjects,
@@ -168,33 +166,27 @@ describe("buildTreeModel", () => {
   ]);
   const projects = [other1, wt, app, other2];
 
-  const DIVIDER = "<divider>";
-  const labels = (rows: TreeRow[]) => rows.map((r) => (r.kind === "divider" ? DIVIDER : r.group.name));
+  const labels = (rows: TreeRow[]) => rows.map((r) => r.group.name);
 
-  it("renders the divider as a thin rule: empty label and forty box-drawing dashes", () => {
-    expect(DIVIDER_LABEL).toBe("");
-    expect(DIVIDER_RULE).toBe("\u2500".repeat(40));
-  });
-
-  it("pins current projects first, then the divider, then the rest, each sorted by activity", () => {
+  it("pins current projects first, then the rest, each sorted by activity", () => {
     const rows = buildTreeModel(projects, [ws], "activity");
-    expect(labels(rows)).toEqual(["feat", "app", DIVIDER, "one", "two"]);
-    expect(rows.map((r) => r.kind === "project" && r.current)).toEqual([true, true, false, false, false]);
+    expect(labels(rows)).toEqual(["feat", "app", "one", "two"]);
+    expect(rows.map((r) => r.kind === "project" && r.current)).toEqual([true, true, false, false]);
   });
 
   it("applies the same sort inside the pinned set and the rest", () => {
-    expect(labels(buildTreeModel(projects, [ws], "name"))).toEqual(["app", "feat", DIVIDER, "one", "two"]);
-    expect(labels(buildTreeModel(projects, [ws], "sessions"))).toEqual(["app", "feat", DIVIDER, "two", "one"]);
+    expect(labels(buildTreeModel(projects, [ws], "name"))).toEqual(["app", "feat", "one", "two"]);
+    expect(labels(buildTreeModel(projects, [ws], "sessions"))).toEqual(["app", "feat", "two", "one"]);
   });
 
-  it("shows no divider and pins nothing when no project is current", () => {
+  it("pins nothing when no project is current", () => {
     const rows = buildTreeModel(projects, ["/elsewhere"], "activity");
     expect(labels(rows)).toEqual(["one", "feat", "app", "two"]);
     expect(rows.every((r) => r.kind === "project" && !r.current)).toBe(true);
     expect(labels(buildTreeModel(projects, [], "activity"))).toEqual(["one", "feat", "app", "two"]);
   });
 
-  it("shows no divider when every project is current", () => {
+  it("keeps the order when every project is current", () => {
     expect(labels(buildTreeModel([app, wt], [ws], "activity"))).toEqual(["feat", "app"]);
   });
 
