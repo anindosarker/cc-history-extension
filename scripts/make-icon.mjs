@@ -1,4 +1,3 @@
-/* global process, console */
 // Renders media/icon.png (128x128) and media/icon@2x.png (256x256) from media/session-claude.svg:
 // the coral asterisk on a dark rounded square.
 //
