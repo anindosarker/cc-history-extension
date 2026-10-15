@@ -14,6 +14,14 @@ export function getProjectsDir(): string {
   return expandHome(raw.trim() || "~/.claude/projects");
 }
 
+/** Defaults to the "sessions" folder beside the projects folder. */
+export function getSessionsDir(): string {
+  const raw = vscode.workspace.getConfiguration("ccHistory").get<string>("sessionsDir") ?? "";
+  const trimmed = raw.trim();
+  if (trimmed) return expandHome(trimmed);
+  return path.join(path.dirname(getProjectsDir()), "sessions");
+}
+
 export function getClaudeCommand(): string {
   const raw = vscode.workspace.getConfiguration("ccHistory").get<string>("claudeCommand") ?? "claude";
   return raw.trim() || "claude";

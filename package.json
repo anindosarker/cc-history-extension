@@ -158,6 +158,11 @@
           "default": "~/.claude/projects",
           "description": "Folder that holds Claude Code project session logs. A leading ~ expands to your home directory."
         },
+        "ccHistory.sessionsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Folder with Claude Code live session files (<pid>.json), used for the running / open / ended status dots. Leave empty to use the sessions folder next to ccHistory.projectsDir."
+        },
         "ccHistory.claudeCommand": {
           "type": "string",
           "default": "claude",

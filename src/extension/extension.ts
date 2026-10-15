@@ -6,12 +6,14 @@ import { Indexer } from "./indexer";
 import { activityOf } from "./indexScan";
 import { resumeSession } from "./resume";
 import { loadSessionData, SessionPanelManager } from "./sessionPanel";
+import { SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
 import { SessionNode, SessionTreeProvider, type TreeNode } from "./treeProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
   const indexer = new Indexer(context);
-  const tree = new SessionTreeProvider(indexer);
+  const status = new SessionStatusProvider(indexer);
+  const tree = new SessionTreeProvider(indexer, status, context.extensionUri);
   const diffs = new DiffContentProvider();
   const panels = new SessionPanelManager(context, diffs);
   const view = vscode.window.createTreeView("ccHistory.sessions", { treeDataProvider: tree, showCollapseAll: true });
@@ -30,10 +32,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     indexer,
+    status,
     diffs,
     panels,
     view,
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),
+    vscode.window.registerFileDecorationProvider(status),
+    view.onDidChangeVisibility((e) => status.setVisible(e.visible)),
+    indexer.onDidChange(() => void status.refresh()),
     vscode.commands.registerCommand("ccHistory.refresh", () => indexer.refresh()),
     vscode.commands.registerCommand("ccHistory.findSession", async () => {
       const meta = await pickSession(indexer);
@@ -61,10 +67,18 @@ export function activate(context: vscode.ExtensionContext): void {
         indexer.startWatching();
         void indexer.refresh();
       }
+      if (e.affectsConfiguration("ccHistory.projectsDir") || e.affectsConfiguration("ccHistory.sessionsDir")) {
+        status.startWatching();
+        void status.refresh();
+      }
     }),
   );
 
-  void indexer.refresh().then(() => indexer.startWatching());
+  void indexer.refresh().then(() => {
+    indexer.startWatching();
+    status.startWatching();
+    status.setVisible(view.visible);
+  });
 }
 
 export function deactivate(): void {}
