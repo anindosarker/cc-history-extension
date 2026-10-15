@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { parseFileRef } from "@shared/fileRef";
 import type { Block } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -7,8 +8,11 @@ import { agentForToolUse, useAgents } from "@/lib/agents";
 import { countOccurrences, toolUseParts, type OpenAll } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
+import { openFileRef } from "./Markdown";
 
 const RESULT_LIMIT = 20_000;
+/** Tools whose summary is the file they touched, shown as a link to that file. */
+const FILE_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 interface Props {
   block: Extract<Block, { type: "tool_use" }>;
@@ -36,6 +40,9 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
   const isError = block.result?.isError === true;
   const { agents, openAgent } = useAgents();
   const spawned = agentForToolUse(agents, block);
+  const fileRef = FILE_TOOLS.has(block.name) ? parseFileRef(block.summary) : undefined;
+  const summaryCurrent = chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1;
+  const summary = <Highlight text={block.summary} query={query} current={summaryCurrent} />;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
@@ -53,16 +60,20 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
             </span>
             {isError && <span className="shrink-0 text-[11px] text-destructive">failed</span>}
             <ChevronRight className={cn("size-3 shrink-0 tier-3 transition-transform", open && "rotate-90")} />
-            <span className="min-w-0 truncate tier-3">
-              <Highlight
-                text={block.summary}
-                query={query}
-                current={chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1}
-              />
-            </span>
+            {!fileRef && <span className="min-w-0 truncate tier-3">{summary}</span>}
             {block.result === undefined && <span className="shrink-0 text-[11px] tier-3">no result</span>}
           </button>
         </CollapsibleTrigger>
+        {fileRef && (
+          <button
+            type="button"
+            className="file-link tool-file min-w-0 truncate tier-3 text-left cursor-pointer hover:underline"
+            onClick={() => openFileRef(fileRef)}
+            title={`Open ${fileRef.path}`}
+          >
+            {summary}
+          </button>
+        )}
         {spawned && (
           <button
             type="button"

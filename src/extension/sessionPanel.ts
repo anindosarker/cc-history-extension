@@ -6,6 +6,7 @@ import { getOpenAt, getSessionsDir, setOpenAt } from "./config";
 import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
 import { exportSession } from "./exportHost";
+import { resolveFilePath } from "./filePaths";
 import { readLiveSessionIds } from "./liveStatus";
 import { parseSessionFile, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
@@ -113,7 +114,7 @@ class SessionPanel {
         return;
       }
       case "revealFile":
-        await revealFile(msg.path);
+        await revealFile(resolveFilePath(msg.path, this.meta.cwd), msg.path, msg.line, msg.column);
         return;
       case "revealJsonl":
         await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(this.meta.filePath));
@@ -269,10 +270,16 @@ class SessionPanel {
   }
 }
 
-async function revealFile(p: string): Promise<void> {
+async function revealFile(p: string, shown: string, line?: number, column?: number): Promise<void> {
   if (!fs.existsSync(p)) {
-    void vscode.window.showWarningMessage(`File not found on disk: ${p}`);
+    void vscode.window.showInformationMessage(`File not found: ${shown}`);
     return;
   }
-  await vscode.window.showTextDocument(vscode.Uri.file(p), { preview: true });
+  const editor = await vscode.window.showTextDocument(vscode.Uri.file(p), { preview: true });
+  if (line === undefined) return;
+  const l = Math.max(0, Math.min(line - 1, editor.document.lineCount - 1));
+  const c = Math.max(0, (column ?? 1) - 1);
+  const pos = new vscode.Position(l, c);
+  editor.selection = new vscode.Selection(pos, pos);
+  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
 }

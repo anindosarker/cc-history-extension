@@ -272,6 +272,15 @@
   padding: 0.05em 0.3em;
   border-radius: 3px;
 }
+.md code.file-link {
+  cursor: pointer;
+}
+.md code.file-link:hover,
+.md code.file-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  outline: none;
+}
 .md pre {
   background: var(--code-bg);
   border: 0;

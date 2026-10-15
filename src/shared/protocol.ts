@@ -6,7 +6,8 @@ export type WebviewToHost =
   | { type: "ready" }
   | { type: "loadSession" }
   | { type: "openDiff"; path: string; hunkIndex?: number }
-  | { type: "revealFile"; path: string }
+  /** Open a file in an editor; relative paths resolve against the session cwd, line and column are 1-based. */
+  | { type: "revealFile"; path: string; line?: number; column?: number }
   | { type: "revealJsonl" }
   | { type: "export"; mode: "file" | "clipboard"; agentId?: string }
   | { type: "listAgents" }

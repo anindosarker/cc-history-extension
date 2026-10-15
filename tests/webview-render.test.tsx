@@ -3,6 +3,7 @@ import { renderToString } from "react-dom/server";
 import { TurnRow } from "@/components/TurnRow";
 import { FoldRow } from "@/components/FoldRow";
 import { FilesTab } from "@/components/FilesTab";
+import { Markdown } from "@/components/Markdown";
 import {
   Header,
   OPEN_AT_OPTIONS,
@@ -183,6 +184,64 @@ describe("recap and notice turns", () => {
     expect(notice).toContain("Usage limit reached · continuing automatically at 7:50pm");
     expect(notice).toContain("tier-2");
     expect(notice).not.toContain("chat-bubble");
+  });
+});
+
+describe("file links", () => {
+  it("marks inline code paths as links in markdown, leaving URLs and fenced code alone", () => {
+    const html = renderToString(
+      <Markdown
+        text={"See `src/parser.ts:12:4` and `/abs/a.ts` and `~/x.json`, not `https://x.com/a.ts`, `npm run x`, `a/b` or `0.1.0`.\n\n```\nsrc/fenced.ts\n```"}
+        query=""
+      />,
+    );
+    expect(html).toMatch(/<code[^>]*data-file-path="src\/parser.ts"[^>]*data-line="12"[^>]*data-column="4"[^>]*>src\/parser.ts:12:4<\/code>/);
+    expect(html).toMatch(/<code data-file-path="\/abs\/a.ts" class="file-link" role="link" tabindex="0" title="Open \/abs\/a.ts">/);
+    expect(html).toContain('data-file-path="~/x.json"');
+    expect((html.match(/data-file-path=/g) ?? []).length).toBe(3);
+    expect(html).toMatch(/<code>https:\/\/x.com\/a.ts<\/code>/);
+    expect(html).toMatch(/<code>npm run x<\/code>/);
+    expect(html).toMatch(/<code>a\/b<\/code>/);
+    expect(html).toMatch(/<code>0.1.0<\/code>/);
+    expect(html).toMatch(/<pre><code>src\/fenced.ts\n<\/code><\/pre>/);
+    // Search marks still land inside a linked span.
+    const marked = renderToString(<Markdown text="Open `src/parser.ts:12`" query="parser" current={0} />);
+    expect(marked).toMatch(/data-file-path="src\/parser.ts"[^>]*>src\/<mark data-current="true">parser<\/mark>.ts:12<\/code>/);
+  });
+
+  it("links the file in Read, Edit and Write tool lines but not in Bash lines", () => {
+    const file = (name: string, p: string): Block => ({
+      type: "tool_use",
+      id: name + p,
+      name,
+      input: { file_path: p },
+      summary: p,
+      result: { text: "ok", isError: false },
+    });
+    const turn: Turn = {
+      uuid: "t",
+      role: "assistant",
+      kind: "assistant",
+      timestamp: 0,
+      blocks: [
+        file("Read", "/a/b.ts"),
+        file("Edit", "src/c.ts"),
+        file("Write", "~/d.md"),
+        { type: "tool_use", id: "x", name: "Bash", input: { command: "cat src/e.ts" }, summary: "cat src/e.ts", result: { text: "", isError: false } },
+      ],
+    };
+    const visible = applyFilters([turn], { role: "all", showThinking: true, showTools: true });
+    const html = renderToString(
+      <TooltipProvider>
+        <TurnRow item={visible[0]} query="" currentBlock={-1} currentOcc={-1} />
+      </TooltipProvider>,
+    );
+    expect((html.match(/tool-file/g) ?? []).length).toBe(3);
+    expect(html).toMatch(/tool-file[^>]*title="Open \/a\/b.ts"[^>]*>\/a\/b.ts<\/button>/);
+    expect(html).toMatch(/tool-file[^>]*title="Open src\/c.ts"/);
+    expect(html).toMatch(/tool-file[^>]*title="Open ~\/d.md"/);
+    // The Bash summary stays inside the trigger as plain text.
+    expect(html).toMatch(/<span class="min-w-0 truncate tier-3">cat src\/e.ts<\/span>/);
   });
 });
 
