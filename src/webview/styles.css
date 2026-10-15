@@ -290,6 +290,24 @@
   border-left: 2px solid color-mix(in srgb, var(--chart-blue) 50%, transparent);
   padding-left: 10px;
 }
+/* A running agent, and the Live indicator: a soft pulse on the dot. */
+@keyframes agent-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chart-blue) 45%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+.agent-pulse {
+  animation: agent-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-pulse {
+    animation: none;
+  }
+}
 .agent-mention {
   color: var(--chart-blue);
 }

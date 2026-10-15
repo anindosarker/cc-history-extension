@@ -21,6 +21,7 @@ export interface RawRecord {
     role?: string;
     content?: unknown;
     usage?: RawUsage;
+    stop_reason?: string | null;
   };
 }
 
@@ -105,6 +106,8 @@ export interface AgentMessage {
   agentName?: string;
   summary?: string;
   body: string;
+  /** An idle notification whose idleReason is "failed" or that carries a failureReason. */
+  failed?: boolean;
 }
 
 /** Pull the sender, summary and body out of a teammate or cross-session message. */
@@ -125,7 +128,14 @@ export function parseAgentText(text: string): AgentMessage {
   let body = s.trim();
   const json = tryParseJsonObject(body);
   if (json) body = unwrapAgentJson(json, body);
-  return { agentName, summary, body };
+  const out: AgentMessage = { agentName, summary, body };
+  if (json && isFailedIdle(json)) out.failed = true;
+  return out;
+}
+
+function isFailedIdle(json: Record<string, unknown>): boolean {
+  if (json.type !== "idle_notification") return false;
+  return json.idleReason === "failed" || (typeof json.failureReason === "string" && json.failureReason.trim() !== "");
 }
 
 /**

@@ -1,18 +1,18 @@
 import { ArrowLeft, Bot, ChevronLeft, ChevronRight, Clipboard, Download, Loader2, X } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
 import type { SubagentInfo, Turn } from "@shared/types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDuration, formatHumanDateTime, formatTokens } from "@/lib/format";
+import type { Appended } from "@/lib/live";
 import { post } from "@/lib/vscode";
-import { StatusDot } from "./AgentsButton";
+import { AgentRowLabel, STATUS_TEXT, StatusIcon } from "./AgentsButton";
 import { MessagesView } from "./MessagesView";
 
 export type AgentLoad =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "loaded"; turns: Turn[]; total: number; done: boolean; tokens: number };
+  | { status: "loaded"; turns: Turn[]; total: number; done: boolean; tokens: number; appended?: Appended };
 
 interface Props {
   agent: SubagentInfo;
@@ -42,12 +42,7 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
             <ArrowLeft />
           </IconButton>
           <Bot className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate font-medium" title={agent.description}>
-            {agent.description}
-          </span>
-          <Badge variant="outline" className="agent-name shrink-0 font-normal max-w-[12rem] truncate">
-            {agent.name}
-          </Badge>
+          <AgentRowLabel agent={agent} className="agent-strip" />
           <span className="shrink-0 tabular-nums text-muted-foreground text-[11px] whitespace-nowrap ml-1">
             {position + 1} of {count}
           </span>
@@ -75,8 +70,8 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground select-none">
           <span className="inline-flex items-center gap-1.5">
-            <StatusDot status={agent.status} />
-            {agent.status === "done" ? "Done" : "Running"}
+            <StatusIcon status={agent.status} />
+            {STATUS_TEXT[agent.status]}
           </span>
           {duration && <span>{duration}</span>}
           {tokens !== undefined && <span title={`${tokens.toLocaleString()} tokens`}>{formatTokens(tokens)} tokens</span>}
@@ -99,7 +94,14 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
           <span className="text-muted-foreground">This agent has no displayable messages.</span>
         </Center>
       ) : (
-        <MessagesView turns={load.turns} loadingMore={!load.done} active={active} openAt={openAt} jumpKey={jumpKey} />
+        <MessagesView
+          turns={load.turns}
+          loadingMore={!load.done}
+          active={active}
+          openAt={openAt}
+          jumpKey={jumpKey}
+          appended={load.appended}
+        />
       )}
     </div>
   );

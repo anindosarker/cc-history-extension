@@ -55,7 +55,8 @@ describe("subagent naming", () => {
     expect(computeAgentStatus({ endedAt: now - 60_000, now, parentAlive: true })).toBe("running");
     expect(computeAgentStatus({ endedAt: now - 60_000, now, parentAlive: false })).toBe("done");
     expect(computeAgentStatus({ endedAt: now - 3 * 60_000, now, parentAlive: true })).toBe("done");
-    expect(computeAgentStatus({ endedAt: undefined, now, parentAlive: true })).toBe("done");
+    expect(computeAgentStatus({ endedAt: undefined, now, parentAlive: true })).toBe("unknown");
+    expect(computeAgentStatus({ endedAt: now - 60_000, now, parentAlive: true, failed: true })).toBe("failed");
   });
 });
 
@@ -113,10 +114,11 @@ describe("subagent listing from a fixture folder", () => {
     expect(named?.filePath.endsWith("agent-ascripts-agent-0123456789abcdef.jsonl")).toBe(true);
   });
 
-  it("derives name and description for an agent without meta.json", async () => {
+  it("leaves an agent without meta.json or a named file unnamed and describes it by its prompt", async () => {
     const list = await listSubagents(meta(sessionFile, "sess-1"), { now: Date.parse(T1) + 60_000, parentAlive: false });
     const bare = list.find((a) => a.agentId === "ab2237253bd420b53");
-    expect(bare?.name).toBe("ab2237253bd420b53");
+    expect(bare?.name).toBeUndefined();
+    expect(bare?.agentType).toBeUndefined();
     expect(bare?.description).toBe("Write browser helper scripts for the harness");
     expect(bare?.status).toBe("done");
     expect(bare?.model).toBeUndefined();

@@ -60,6 +60,8 @@ export interface Turn {
   agentName?: string;
   /** Agent turns: the one-line summary attribute, when present. */
   summary?: string;
+  /** Agent turns: the idle notification reported a failure (idleReason "failed" or a failureReason). */
+  failed?: boolean;
   /** System turns: short label derived from the tag, like "task notification". */
   label?: string;
   /** Turns built from a top-level system record: its subtype, like "away_summary". */
@@ -68,12 +70,16 @@ export interface Turn {
   agent?: string;
 }
 
-export type SubagentStatus = "running" | "done";
+/** "unknown" when the transcript holds no record to judge by; the viewer shows a grey dot. */
+export type SubagentStatus = "running" | "done" | "failed" | "unknown";
 
 /** One subagent transcript next to a session, listed from its meta.json and a cheap stat. */
 export interface SubagentInfo {
   agentId: string;
-  name: string;
+  /** The spawn name (meta.json or the file name). Absent for agents Claude Code did not name. */
+  name?: string;
+  /** The agent definition used, like "general-purpose"; shown only in tooltips. */
+  agentType?: string;
   description: string;
   model?: string;
   color?: string;

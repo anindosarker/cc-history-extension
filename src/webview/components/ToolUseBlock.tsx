@@ -3,10 +3,11 @@ import { ChevronRight } from "lucide-react";
 import { editCounts, editLines } from "@shared/editStats";
 import { parseFileRef } from "@shared/fileRef";
 import { displayToolName } from "@shared/toolSummary";
-import type { Block } from "@shared/types";
+import type { Block, SubagentInfo } from "@shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { agentLabel } from "@shared/agents";
 import { agentForToolUse, useAgents } from "@/lib/agents";
 import { countOccurrences, toolUseParts, type OpenAll } from "@/lib/search";
 import { AGENT_TOOLS, toolStatus } from "@/lib/toolStatus";
@@ -118,17 +119,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
             )}
           </span>
         )}
-        {spawned && (
-          <Button
-            variant="link"
-            size="sm"
-            className="agent-name h-auto shrink-0 px-0 text-[11px] font-normal"
-            onClick={() => openAgent(spawned.agentId)}
-            title={`Open the ${spawned.name} transcript`}
-          >
-            Open transcript
-          </Button>
-        )}
+        {spawned && <AgentLink agent={spawned} onOpen={openAgent} />}
       </div>
       <CollapsibleContent>
         <div className="mt-2 flex flex-col gap-2">
@@ -159,6 +150,23 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
     </Collapsible>
   );
 });
+
+/** Link to the spawned agent's transcript: its name, or its description when Claude Code gave it no name. */
+function AgentLink({ agent, onOpen }: { agent: SubagentInfo; onOpen: (agentId: string) => void }) {
+  const label = agentLabel(agent);
+  return (
+    <Button
+      variant="link"
+      size="sm"
+      className="agent-link h-auto min-w-0 max-w-[50%] shrink px-0 text-[11px] font-normal"
+      onClick={() => onOpen(agent.agentId)}
+      title={`Open transcript\n${label.tooltip}`}
+    >
+      <span className="agent-name truncate">{label.primary}</span>
+      {label.secondary !== undefined && <span className="min-w-0 truncate text-muted-foreground">{label.secondary}</span>}
+    </Button>
+  );
+}
 
 /** Removed lines on a red tint, added lines on a green tint; one block per old/new pair. */
 function MiniDiff({ blocks }: { blocks: { removed: string[]; added: string[] }[] }) {

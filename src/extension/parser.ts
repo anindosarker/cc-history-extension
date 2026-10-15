@@ -71,6 +71,11 @@ export interface ParseOptions extends ClassifyOptions {
 export class SessionBuilder {
   private readonly result: ParsedSession = { turns: [], tokens: 0 };
   private readonly toolUses = new Map<string, Extract<Block, { type: "tool_use" }>>();
+  /** Index of the turn each tool_use block lives in, so a late result marks that turn changed. */
+  private readonly toolUseTurn = new Map<string, number>();
+  /** Turns handed out by takeAppend so far, and the lowest index changed since. */
+  private delivered = 0;
+  private dirtyFrom: number | undefined;
   private lastAssistantMsgId: string | undefined;
   private lastUsageMsgId: string | undefined;
   /** Last slash command seen (echo or local_command record), for the dedupe window. */
@@ -136,6 +141,7 @@ export class SessionBuilder {
         turn = { uuid, role: "user", kind, timestamp: ts, blocks: [{ type: "text", text: msg.body }] };
         if (msg.agentName) turn.agentName = msg.agentName;
         if (msg.summary) turn.summary = msg.summary;
+        if (msg.failed) turn.failed = true;
       } else {
         const raw = userRawText(r.message?.content);
         if (this.isDuplicateCommand(raw, ts)) return;
@@ -153,6 +159,8 @@ export class SessionBuilder {
     if (msgId && msgId === this.lastAssistantMsgId && prev?.role === "assistant") {
       prev.blocks.push(...blocks);
       this.result.lastActivityAt = Math.max(this.result.lastActivityAt ?? 0, ts);
+      this.markDirty(this.result.turns.length - 1);
+      this.noteToolUses(blocks, this.result.turns.length - 1);
       return;
     }
     this.lastAssistantMsgId = msgId;
@@ -160,10 +168,33 @@ export class SessionBuilder {
       { uuid: r.uuid ?? `a-${this.result.turns.length}`, role: "assistant", kind: "assistant", timestamp: ts, blocks },
       ts,
     );
+    this.noteToolUses(blocks, this.result.turns.length - 1);
   }
 
   finish(): ParsedSession {
     return this.result;
+  }
+
+  /**
+   * The turns a viewer that already holds the first `offset` turns must replace: everything from the
+   * earliest turn changed since the last call (a merged assistant record, a late tool result) or the
+   * first turn never delivered. Undefined when nothing changed.
+   */
+  takeAppend(): { offset: number; turns: Turn[] } | undefined {
+    const total = this.result.turns.length;
+    const offset = Math.min(this.dirtyFrom ?? total, this.delivered);
+    this.dirtyFrom = undefined;
+    this.delivered = total;
+    if (offset >= total) return undefined;
+    return { offset, turns: this.result.turns.slice(offset) };
+  }
+
+  private markDirty(index: number): void {
+    if (index < this.delivered && (this.dirtyFrom === undefined || index < this.dirtyFrom)) this.dirtyFrom = index;
+  }
+
+  private noteToolUses(blocks: Block[], turnIndex: number): void {
+    for (const b of blocks) if (b.type === "tool_use") this.toolUseTurn.set(b.id, turnIndex);
   }
 
   /**
@@ -212,6 +243,8 @@ export class SessionBuilder {
       if (b.type !== "tool_result" || typeof b.tool_use_id !== "string") continue;
       const use = this.toolUses.get(b.tool_use_id);
       if (!use) continue;
+      const turnIndex = this.toolUseTurn.get(b.tool_use_id);
+      if (turnIndex !== undefined) this.markDirty(turnIndex);
       let text = toolResultText(b.content);
       let truncated = false;
       if (text.length > MAX_TOOL_RESULT_CHARS) {

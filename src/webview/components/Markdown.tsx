@@ -163,7 +163,7 @@ export function openFileRef(ref: { path: string; line?: number; column?: number 
 
 export const Markdown = memo(function Markdown({ text, query, current = -1 }: Props) {
   const { agents } = useAgents();
-  const names = useMemo(() => agents.map((a) => a.name), [agents]);
+  const names = useMemo(() => agents.map((a) => a.name).filter((n): n is string => !!n), [agents]);
   const plugins = useMemo(
     () => [rehypeFileLinks, [rehypeMentions, { names }] as const, [rehypeMark, { query, current }] as const],
     [names, query, current],

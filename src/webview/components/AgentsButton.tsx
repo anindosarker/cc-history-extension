@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Bot } from "lucide-react";
-import type { SubagentInfo } from "@shared/types";
-import { Badge } from "@/components/ui/badge";
+import { Bot, Check, X } from "lucide-react";
+import { agentLabel } from "@shared/agents";
+import type { SubagentInfo, SubagentStatus } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -13,17 +13,55 @@ interface Props {
   compact: boolean;
 }
 
-/** Green when the agent finished, blue while it is still writing. */
-export function StatusDot({ status, className }: { status: SubagentInfo["status"]; className?: string }) {
+export const STATUS_TEXT: Record<SubagentStatus, string> = {
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+  unknown: "Unknown",
+};
+
+/** "Agents (N) · k done · m running", with failed agents counted when there are any. */
+export function agentsSummary(agents: readonly Pick<SubagentInfo, "status">[]): string {
+  const n = (s: SubagentStatus) => agents.filter((a) => a.status === s).length;
+  const parts = [`Agents (${agents.length})`, `${n("done")} done`, `${n("running")} running`];
+  const failed = n("failed");
+  if (failed > 0) parts.push(`${failed} failed`);
+  return parts.join(" · ");
+}
+
+/** Blue pulsing dot while running, green check when done, red x when failed, grey dot when unknown. */
+export function StatusIcon({ status, className }: { status: SubagentStatus; className?: string }) {
+  const label = STATUS_TEXT[status];
+  if (status === "done") {
+    return <Check aria-label={label} className={cn("agent-status size-3 shrink-0 text-[var(--vscode-charts-green)]", className)} data-status={status} />;
+  }
+  if (status === "failed") {
+    return <X aria-label={label} className={cn("agent-status size-3 shrink-0 text-[var(--vscode-charts-red)]", className)} data-status={status} />;
+  }
   return (
     <span
-      aria-label={status === "done" ? "Done" : "Running"}
+      role="img"
+      aria-label={label}
+      data-status={status}
       className={cn(
-        "inline-block size-2 shrink-0 rounded-full",
-        status === "done" ? "bg-[var(--vscode-charts-green)]" : "bg-[var(--vscode-charts-blue)]",
+        "agent-status inline-block size-2 shrink-0 rounded-full",
+        status === "running" ? "agent-pulse bg-[var(--vscode-charts-blue)]" : "bg-muted-foreground/50",
         className,
       )}
     />
+  );
+}
+
+/** "name  description" like Claude Code's own agent list; the description alone when the agent has no name. */
+export function AgentRowLabel({ agent, className }: { agent: SubagentInfo; className?: string }) {
+  const label = agentLabel(agent);
+  return (
+    <span className={cn("min-w-0 flex-1 flex items-baseline gap-1.5", className)} title={label.tooltip}>
+      <span className={cn("truncate", label.secondary !== undefined ? "agent-name shrink-0 max-w-[55%] font-medium" : "min-w-0")}>
+        {label.primary}
+      </span>
+      {label.secondary !== undefined && <span className="min-w-0 truncate text-muted-foreground">{label.secondary}</span>}
+    </span>
   );
 }
 
@@ -39,24 +77,21 @@ export function AgentsButton({ agents, onOpen, compact }: Props) {
           {compact ? agents.length : `Agents (${agents.length})`}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] p-1">
+      <PopoverContent align="end" className="w-96 max-w-[calc(100vw-2rem)] p-1">
+        <div className="agents-summary px-2 py-1 text-[11px] text-muted-foreground select-none">{agentsSummary(agents)}</div>
         <ul className="max-h-[60vh] overflow-y-auto scroll-thin">
           {agents.map((a) => (
             <li key={a.agentId}>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                className="agent-row flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 onClick={() => {
                   setOpen(false);
                   onOpen(a.agentId);
                 }}
-                title={a.description}
               >
-                <StatusDot status={a.status} />
-                <span className="min-w-0 flex-1 truncate">{a.description}</span>
-                <Badge variant="outline" className="agent-name shrink-0 font-normal">
-                  {a.name}
-                </Badge>
+                <StatusIcon status={a.status} />
+                <AgentRowLabel agent={a} />
               </button>
             </li>
           ))}

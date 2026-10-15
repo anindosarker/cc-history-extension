@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { agentLabel } from "@shared/agents";
+import { useAgents } from "@/lib/agents";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import type { VisibleTurn } from "@/lib/search";
@@ -40,20 +41,26 @@ export const AgentTurn = memo(function AgentTurn({ item, query, current, time }:
   }, [current]);
   const body = bodyOf(item);
   const line = item.turn.summary || preview(body);
-  const name = item.turn.agentName ?? "agent";
+  const { agents } = useAgents();
+  const name = item.turn.agentName;
+  const known = name ? agents.find((a) => a.name === name) : undefined;
+  const label = known ? agentLabel(known) : undefined;
   return (
     <div className="chat-turn py-[10px]" data-turn-index={item.index}>
       <div className="chat-content">
         <Collapsible open={open} onOpenChange={setOpen} className="agent-card tier-2 min-w-0">
           <div
-            className="mb-1.5 text-[11px] leading-none select-none"
-            title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
+            className="agent-card-head mb-1.5 flex items-baseline gap-1.5 min-w-0 text-[11px] leading-none select-none"
+            title={[label?.tooltip, item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined].filter(Boolean).join("\n")}
           >
-            {"Agent · "}
-            <Badge variant="outline" className="agent-name px-1 py-0 text-[10px] leading-4 font-normal align-middle">
-              {name}
-            </Badge>
-            {time ? ` · ${time}` : ""}
+            {name ? (
+              <span className="agent-name shrink-0 font-medium">{name}</span>
+            ) : (
+              <span className="shrink-0">Agent</span>
+            )}
+            {label?.secondary !== undefined && <span className="min-w-0 truncate text-muted-foreground">{label.secondary}</span>}
+            {item.turn.failed && <span className="shrink-0 text-destructive">failed</span>}
+            {time ? <span className="shrink-0 text-muted-foreground">{`· ${time}`}</span> : null}
           </div>
           <CollapsibleTrigger asChild>
             <button

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { agentTag, failedAgentNames, orderAgents, spawnOrder } from "../shared/agents";
 import type { FileChange, SessionMeta, SubagentInfo, SubagentStatus, Turn } from "../shared/types";
 import { extractFileChanges } from "./diff";
 import { tryParseJson } from "./jsonl";
@@ -41,8 +42,20 @@ export function agentIdFromFileName(fileName: string): string {
   return base.startsWith("agent-") ? base.slice("agent-".length) : base;
 }
 
-export function computeAgentStatus(input: { endedAt: number | undefined; now: number; parentAlive: boolean }): SubagentStatus {
-  if (!input.parentAlive || input.endedAt === undefined) return "done";
+/**
+ * failed: the main transcript holds a failed idle notification for the agent, or its last assistant
+ * message stopped with an error. unknown: no record to judge by. Otherwise running while the parent
+ * is alive and the log is fresh, else done.
+ */
+export function computeAgentStatus(input: {
+  endedAt: number | undefined;
+  now: number;
+  parentAlive: boolean;
+  failed?: boolean;
+}): SubagentStatus {
+  if (input.failed) return "failed";
+  if (input.endedAt === undefined) return "unknown";
+  if (!input.parentAlive) return "done";
   return input.now - input.endedAt <= AGENT_RUNNING_WINDOW_MS ? "running" : "done";
 }
 
@@ -51,6 +64,8 @@ export interface TranscriptEdges {
   endedAt?: number;
   /** Plain text of the first user record, the prompt the parent sent. */
   firstPrompt?: string;
+  /** stop_reason of the last assistant record in the tail, like "end_turn" or "error". */
+  lastStopReason?: string;
 }
 
 /** Timestamps from the first and last records without reading the middle of the file. */
@@ -76,11 +91,13 @@ export async function readTranscriptEdges(filePath: string, size: number): Promi
     if (tailStart > 0) lines.shift();
     for (let i = lines.length - 1; i >= 0; i--) {
       const rec = asRecord(tryParseJson(lines[i]));
-      const ts = rec ? parseTimestamp(rec.timestamp) : undefined;
-      if (ts !== undefined) {
-        out.endedAt = ts;
-        break;
+      if (!rec) continue;
+      if (out.lastStopReason === undefined && rec.type === "assistant" && typeof rec.message?.stop_reason === "string") {
+        out.lastStopReason = rec.message.stop_reason;
       }
+      const ts = parseTimestamp(rec.timestamp);
+      if (ts !== undefined && out.endedAt === undefined) out.endedAt = ts;
+      if (out.endedAt !== undefined && out.lastStopReason !== undefined) break;
     }
   } finally {
     await fh.close();
@@ -126,11 +143,14 @@ export interface ListOptions {
   now?: number;
   /** Whether the parent session still has a live Claude process. */
   parentAlive: boolean;
+  /** The main transcript: gives the spawn order and the failed idle notifications. */
+  mainTurns?: readonly Turn[];
 }
 
 /**
- * Subagent transcripts of a session, oldest first. Reads meta.json, a stat and the two ends of each
- * transcript; nothing is parsed until an agent is opened.
+ * Subagent transcripts of a session in spawn order (the main transcript's `Agent` calls), by start
+ * time when no call matches. Reads meta.json, a stat and the two ends of each transcript; nothing
+ * is parsed until an agent is opened.
  */
 export async function listSubagents(meta: SessionMeta, opts: ListOptions): Promise<SubagentInfo[]> {
   const dir = subagentsDir(meta);
@@ -141,6 +161,7 @@ export async function listSubagents(meta: SessionMeta, opts: ListOptions): Promi
     return [];
   }
   const now = opts.now ?? Date.now();
+  const failedNames = failedAgentNames(opts.mainTurns ?? []);
   const out: SubagentInfo[] = [];
   for (const file of names) {
     if (!file.endsWith(".jsonl")) continue;
@@ -160,26 +181,29 @@ export async function listSubagents(meta: SessionMeta, opts: ListOptions): Promi
       /* unreadable transcript, list it anyway */
     }
     const agentId = agentIdFromFileName(file);
-    const name = str(m.name) ?? nameFromFileName(file) ?? str(m.agentType) ?? agentId;
-    const description = str(m.description) ?? (edges.firstPrompt ? clip(edges.firstPrompt) : name);
+    const name = str(m.name) ?? nameFromFileName(file);
+    const agentType = str(m.agentType);
+    const description = str(m.description) ?? (edges.firstPrompt ? clip(edges.firstPrompt) : (name ?? agentType ?? agentId));
     const endedAt = edges.endedAt ?? stat.mtimeMs;
+    const failed = (name !== undefined && failedNames.has(name)) || edges.lastStopReason === "error";
     const info: SubagentInfo = {
       agentId,
-      name,
       description,
       filePath,
       size: stat.size,
       endedAt,
-      status: computeAgentStatus({ endedAt, now, parentAlive: opts.parentAlive }),
+      status: computeAgentStatus({ endedAt, now, parentAlive: opts.parentAlive, failed }),
     };
+    if (name) info.name = name;
+    if (agentType) info.agentType = agentType;
     if (edges.startedAt !== undefined) info.startedAt = edges.startedAt;
     if (str(m.model)) info.model = m.model;
     if (str(m.color)) info.color = m.color;
     if (str(m.toolUseId)) info.toolUseId = m.toolUseId;
     out.push(info);
   }
-  out.sort((a, b) => (a.startedAt ?? a.endedAt ?? 0) - (b.startedAt ?? b.endedAt ?? 0) || a.name.localeCompare(b.name));
-  return out;
+  out.sort((a, b) => (a.startedAt ?? a.endedAt ?? 0) - (b.startedAt ?? b.endedAt ?? 0) || agentTag(a).localeCompare(agentTag(b)));
+  return orderAgents(out, spawnOrder(opts.mainTurns ?? []));
 }
 
 function str(v: unknown): string | undefined {
@@ -188,7 +212,7 @@ function str(v: unknown): string | undefined {
 
 /** Parse one subagent transcript. Sidechain records are the whole file, so they are kept. */
 export function parseSubagentFile(info: SubagentInfo): Promise<ParsedSession> {
-  return parseSessionFile(info.filePath, { sidechain: true, agent: info.name });
+  return parseSessionFile(info.filePath, { sidechain: true, agent: agentTag(info) });
 }
 
 /** File changes across the main transcript and every subagent transcript, in timestamp order. */
