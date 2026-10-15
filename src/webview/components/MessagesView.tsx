@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { OpenAt } from "@shared/openAt";
 import type { Turn } from "@shared/types";
 import { applyFilters, findMatches, type Filters } from "@/lib/search";
 import { MessageList } from "./MessageList";
@@ -8,9 +9,11 @@ interface Props {
   turns: Turn[];
   loadingMore: boolean;
   active: boolean;
+  openAt: OpenAt;
+  jumpKey: number;
 }
 
-export function MessagesView({ turns, loadingMore, active }: Props) {
+export function MessagesView({ turns, loadingMore, active, openAt, jumpKey }: Props) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>({ role: "all", showThinking: true, showTools: true });
   const [cur, setCur] = useState(0);
@@ -61,7 +64,15 @@ export function MessagesView({ turns, loadingMore, active }: Props) {
         filters={filters}
         onFiltersChange={setFilters}
       />
-      <MessageList items={visible} query={query} current={current} scrollKey={scrollKey} loadingMore={loadingMore} />
+      <MessageList
+        items={visible}
+        query={query}
+        current={current}
+        scrollKey={scrollKey}
+        loadingMore={loadingMore}
+        openAt={openAt}
+        jumpKey={jumpKey}
+      />
     </div>
   );
 }

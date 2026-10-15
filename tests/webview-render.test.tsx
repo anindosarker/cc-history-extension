@@ -93,7 +93,7 @@ describe("webview components render on the server", () => {
     };
     const html = renderToString(
       <TooltipProvider>
-        <Header meta={meta} turnCount={2} />
+        <Header meta={meta} turnCount={2} openAt="newest" onOpenAtChange={() => {}} />
         <FilesTab files={files} />
         <SearchBar
           query="q"
@@ -112,5 +112,8 @@ describe("webview components render on the server", () => {
     expect(html).toContain("2 / 3");
     expect(html).toContain("15m");
     expect(html).toContain("main");
+    // The Old | New toggle marks the persisted choice as pressed.
+    expect(html).toMatch(/aria-pressed="true"[^>]*>New</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Old</);
   });
 });

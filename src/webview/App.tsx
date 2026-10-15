@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { DEFAULT_OPEN_AT, type OpenAt } from "@shared/openAt";
 import type { HostToWebview } from "@shared/protocol";
 import type { FileChange, SessionMeta, Turn } from "@shared/types";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,9 @@ type State =
 export function App() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [tab, setTab] = useState<"messages" | "files">("messages");
+  const [openAt, setOpenAt] = useState<OpenAt>(DEFAULT_OPEN_AT);
+  // Bumped on each user toggle so the list jumps right away, before the host acks.
+  const [jumpKey, setJumpKey] = useState(0);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<HostToWebview>) => {
@@ -29,7 +33,11 @@ export function App() {
         case "error":
           setState({ status: "error", message: msg.message });
           break;
+        case "openAt":
+          setOpenAt(msg.value);
+          break;
         case "sessionStart":
+          setOpenAt(msg.openAt);
           setState({
             status: "loaded",
             meta: msg.meta,
@@ -52,6 +60,12 @@ export function App() {
     window.addEventListener("message", onMessage);
     post({ type: "ready" });
     return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  const changeOpenAt = useCallback((value: OpenAt) => {
+    setOpenAt(value);
+    setJumpKey((k) => k + 1);
+    post({ type: "setOpenAt", value });
   }, []);
 
   if (state.status === "loading") {
@@ -78,7 +92,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-full min-h-0">
-        <Header meta={meta} turnCount={total} />
+        <Header meta={meta} turnCount={total} openAt={openAt} onOpenAtChange={changeOpenAt} />
         <Tabs value={tab} onValueChange={(v) => setTab(v as "messages" | "files")} className="px-4 shrink-0">
           <TabsList>
             <TabsTrigger value="messages">Messages</TabsTrigger>
@@ -91,7 +105,13 @@ export function App() {
               <span className="text-muted-foreground">This session has no displayable messages.</span>
             </Center>
           ) : (
-            <MessagesView turns={turns} loadingMore={!done} active={tab === "messages"} />
+            <MessagesView
+              turns={turns}
+              loadingMore={!done}
+              active={tab === "messages"}
+              openAt={openAt}
+              jumpKey={jumpKey}
+            />
           )}
         </div>
         <div className={tab === "files" ? "flex-1 min-h-0" : "hidden"}>

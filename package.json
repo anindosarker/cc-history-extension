@@ -172,6 +172,19 @@
           "type": "boolean",
           "default": false,
           "description": "Include thinking blocks in plain-text exports."
+        },
+        "ccHistory.openAt": {
+          "type": "string",
+          "enum": [
+            "oldest",
+            "newest"
+          ],
+          "enumDescriptions": [
+            "Start at the first message.",
+            "Start scrolled to the latest message."
+          ],
+          "default": "oldest",
+          "description": "Where the session viewer is scrolled when a session opens. The Old | New toggle in the viewer header changes this setting."
         }
       }
     }

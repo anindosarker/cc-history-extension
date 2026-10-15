@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { normalizeOpenAt, type OpenAt } from "../shared/openAt";
 
 export function expandHome(p: string): string {
   if (p === "~") return os.homedir();
@@ -16,6 +17,16 @@ export function getProjectsDir(): string {
 export function getClaudeCommand(): string {
   const raw = vscode.workspace.getConfiguration("ccHistory").get<string>("claudeCommand") ?? "claude";
   return raw.trim() || "claude";
+}
+
+export function getOpenAt(): OpenAt {
+  return normalizeOpenAt(vscode.workspace.getConfiguration("ccHistory").get<string>("openAt"));
+}
+
+export async function setOpenAt(value: OpenAt): Promise<void> {
+  await vscode.workspace
+    .getConfiguration("ccHistory")
+    .update("openAt", normalizeOpenAt(value), vscode.ConfigurationTarget.Global);
 }
 
 export function getExportOptions(): { includeToolResults: boolean; includeThinking: boolean } {

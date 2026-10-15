@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { HostToWebview, WebviewToHost } from "../shared/protocol";
 import type { FileChange, SessionData, SessionMeta, Turn } from "../shared/types";
+import { getOpenAt, setOpenAt } from "./config";
 import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
 import { exportSession } from "./exportHost";
@@ -118,6 +119,10 @@ class SessionPanel {
       case "resume":
         resumeSession(this.meta);
         return;
+      case "setOpenAt":
+        await setOpenAt(msg.value);
+        this.post({ type: "openAt", value: getOpenAt() });
+        return;
       case "copyText":
         await vscode.env.clipboard.writeText(msg.text);
         return;
@@ -138,7 +143,7 @@ class SessionPanel {
   }
 
   private sendData(turns: Turn[], files: FileChange[]): void {
-    this.post({ type: "sessionStart", meta: this.meta, files, totalTurns: turns.length });
+    this.post({ type: "sessionStart", meta: this.meta, files, totalTurns: turns.length, openAt: getOpenAt() });
     if (turns.length <= CHUNK_THRESHOLD) {
       this.post({ type: "sessionTurns", turns, offset: 0, done: true });
       return;

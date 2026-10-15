@@ -1,16 +1,20 @@
 import { Clipboard, Download, FileJson, GitBranch, MessageSquare, Play } from "lucide-react";
+import type { OpenAt } from "@shared/openAt";
 import type { SessionMeta } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { post } from "@/lib/vscode";
+import { OpenAtToggle } from "./OpenAtToggle";
 
 interface Props {
   meta: SessionMeta;
   turnCount: number;
+  openAt: OpenAt;
+  onOpenAtChange: (value: OpenAt) => void;
 }
 
-export function Header({ meta, turnCount }: Props) {
+export function Header({ meta, turnCount, openAt, onOpenAtChange }: Props) {
   const duration =
     meta.startedAt && meta.lastActivityAt ? formatDuration(meta.lastActivityAt - meta.startedAt) : undefined;
   return (
@@ -18,6 +22,7 @@ export function Header({ meta, turnCount }: Props) {
       <div className="flex items-start gap-3">
         <h1 className="text-[1.25em] font-semibold leading-tight flex-1 min-w-0 break-words">{meta.title}</h1>
         <div className="flex items-center gap-1.5 shrink-0">
+          <OpenAtToggle value={openAt} onChange={onOpenAtChange} />
           <Button onClick={() => post({ type: "resume" })} title="Open a terminal and run claude --resume">
             <Play />
             Resume
