@@ -148,6 +148,13 @@ export const STALE_INTERVALS = 2;
 export const TOKEN_HINT_AFTER_MS = 10 * 60_000;
 export const TOKEN_HINT = "Open or use Claude Code to refresh its login";
 export const STALE_MARKER = " ~";
+export const PAUSED_TEXT = "Paused after repeated 429, click Refresh to resume";
+
+/** "Please wait 42s" while a manual refresh is rate limited, or undefined. */
+export function waitText(state: Pick<UsageState, "manualWaitUntil">, now: number): string | undefined {
+  if (state.manualWaitUntil === undefined || state.manualWaitUntil <= now) return undefined;
+  return `Please wait ${Math.max(1, Math.ceil((state.manualWaitUntil - now) / 1000))}s`;
+}
 
 export function isStale(fetchedAt: number, now: number, intervalMs: number): boolean {
   return now - fetchedAt > STALE_INTERVALS * intervalMs;
@@ -185,23 +192,29 @@ export interface StatusModel {
  */
 export function statusModel(state: UsageState, settings: UsageSettingsLike, now: number): StatusModel {
   const { snapshot, error } = state;
+  const wait = waitText(state, now);
   if (!snapshot) {
     const lines = error
       ? [`Claude Code usage unavailable: ${failureText(error)}`, `Last attempt ${formatAgo(now - error.at)}`]
       : ["Fetching Claude Code usage…"];
+    if (state.paused) lines.unshift(PAUSED_TEXT);
+    if (wait) lines.push(wait);
     if (error && tokenHintDue(error, now)) lines.push(TOKEN_HINT);
     return { text: state.refreshing && !error ? "$(sparkle) usage …" : STATUS_ERROR_TEXT, lines, level: undefined, stale: false };
   }
   const color = colorDecision(snapshot, settings);
-  const stale = isStale(snapshot.fetchedAt, now, settings.intervalMs);
+  // A paused widget always shows its reading as stale: nothing will refresh it on its own.
+  const stale = state.paused === true || isStale(snapshot.fetchedAt, now, settings.intervalMs);
   const text = statusBarItemText(snapshot, settings) + (stale ? STALE_MARKER : "");
   const lines: string[] = [];
+  if (state.paused) lines.push(PAUSED_TEXT);
   if (error) {
     lines.push(`Stale: last update ${formatAgo(now - snapshot.fetchedAt)}`);
     lines.push(failureText(error));
     if (tokenHintDue(error, now)) lines.push(TOKEN_HINT);
   }
   lines.push(...tooltipLines(snapshot, { now, plan: state.plan, color }));
+  if (wait) lines.push(wait);
   return { text, lines, level: color.level, stale };
 }
 

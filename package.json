@@ -278,9 +278,9 @@
         },
         "ccHistory.usage.intervalSeconds": {
           "type": "number",
-          "default": 60,
-          "minimum": 30,
-          "description": "Seconds between usage polls while the window is focused. Polling pauses when VS Code is not focused."
+          "default": 300,
+          "minimum": 120,
+          "description": "Seconds between usage polls while the window is focused (at least 120). Polling pauses when VS Code is not focused, and every window on the machine shares one fetch per interval."
         },
         "ccHistory.usage.showInStatusBar": {
           "type": "boolean",

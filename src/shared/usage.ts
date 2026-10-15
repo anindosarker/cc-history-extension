@@ -64,6 +64,18 @@ export interface UsageView {
   week: WeekSummary;
   /** Absent only from hosts older than the setting; the panel then uses the defaults. */
   thresholds?: UsageThresholds;
+  /** Automatic polling stopped after repeated 429s; Refresh resumes it. */
+  paused?: boolean;
+  /** Refresh is rate limited until this time. */
+  waitUntil?: number;
+}
+
+export const PAUSED_NOTICE = "Paused after repeated 429, click Refresh to resume";
+
+/** "Please wait 42s", or undefined once the wait is over. */
+export function waitLabel(waitUntil: number | undefined, now: number): string | undefined {
+  if (waitUntil === undefined || waitUntil <= now) return undefined;
+  return `Please wait ${Math.max(1, Math.ceil((waitUntil - now) / 1000))}s`;
 }
 
 export type UsageWebviewToHost = { type: "usageRequest" } | { type: "usageRefresh" };

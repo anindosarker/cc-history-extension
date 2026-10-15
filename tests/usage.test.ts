@@ -152,9 +152,10 @@ describe("credentials parsing", () => {
 
 describe("poll schedule", () => {
   it("clamps the interval and backs off exponentially up to five minutes", () => {
-    expect(intervalMs(undefined)).toBe(60_000);
-    expect(intervalMs(10)).toBe(30_000);
-    expect(intervalMs(90.9)).toBe(90_000);
+    expect(intervalMs(undefined)).toBe(300_000);
+    expect(intervalMs(10)).toBe(120_000);
+    expect(intervalMs(90.9)).toBe(120_000);
+    expect(intervalMs(600.9)).toBe(600_000);
     expect(nextDelayMs(60_000, 0)).toBe(60_000);
     expect(nextDelayMs(60_000, 1)).toBe(120_000);
     expect(nextDelayMs(60_000, 2)).toBe(240_000);

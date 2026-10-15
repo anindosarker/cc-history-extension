@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import {
   DEFAULT_THRESHOLDS,
+  PAUSED_NOTICE,
+  waitLabel,
   ERROR_REASON_TEXT,
   barLevel,
   elapsedFraction,
@@ -43,6 +45,8 @@ export function UsageApp() {
   }, []);
 
   const refresh = () => post({ type: "usageRefresh" });
+  const wait = view ? waitLabel(view.waitUntil, now) : undefined;
+  const refreshDisabled = view ? view.refreshing || wait !== undefined : true;
 
   if (!view) {
     return (
@@ -63,11 +67,15 @@ export function UsageApp() {
           <span className="ml-auto text-[11px] text-muted-foreground whitespace-nowrap">
             {view.fetchedAt !== undefined ? `Updated ${formatAgo(now - view.fetchedAt)}` : "Not fetched yet"}
           </span>
-          <Button variant="ghost" size="sm" onClick={refresh} disabled={view.refreshing} aria-label="Refresh usage">
+          <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshDisabled} aria-label="Refresh usage" title={wait}>
             <RefreshCw className={cn(view.refreshing && "animate-spin")} />
-            Refresh
+            {wait ?? "Refresh"}
           </Button>
         </div>
+
+        {view.paused && (
+          <div className="usage-paused mt-4 rounded-[6px] border border-border px-3 py-2 text-muted-foreground">{PAUSED_NOTICE}</div>
+        )}
 
         {view.error && (
           <div className="mt-4 rounded-[6px] border border-destructive/50 px-3 py-2">
@@ -76,8 +84,8 @@ export function UsageApp() {
               <div className="mt-0.5 text-[11px] text-muted-foreground">{view.error.message}</div>
             )}
             <div className="mt-1.5 flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={refresh} disabled={view.refreshing}>
-                Retry
+              <Button variant="outline" size="sm" onClick={refresh} disabled={refreshDisabled} title={wait}>
+                {wait ?? "Retry"}
               </Button>
               <span className="text-[11px] text-muted-foreground">Last attempt {formatAgo(now - view.error.at)}</span>
             </div>

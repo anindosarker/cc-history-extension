@@ -1,4 +1,5 @@
 import type { UsageErrorReason } from "../../shared/usage";
+import { parseRetryAfter } from "./schedule";
 
 export type { UsageErrorReason };
 
@@ -31,9 +32,15 @@ export class UsageError extends Error {
     message: string,
     /** HTTP status for "http" failures, so callers can tell a rejected token from an outage. */
     readonly status?: number,
+    /** For 429: the Retry-After header as milliseconds, when the server sent one. */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "UsageError";
+  }
+
+  get rateLimited(): boolean {
+    return this.status === 429;
   }
 
   /** True when the server rejected the token itself (401 or 403). */
@@ -142,7 +149,12 @@ export async function fetchUsage(accessToken: string, opts: FetchOptions): Promi
   }
   if (!res.ok) {
     const hint = res.status === 401 || res.status === 403 ? " Sign in again with claude login." : "";
-    throw new UsageError("http", `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}.${hint}`, res.status);
+    const text = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}.${hint}`;
+    if (res.status === 429) {
+      const retryAfter = parseRetryAfter(res.headers?.get?.("retry-after"), (opts.now ?? Date.now)());
+      throw new UsageError("http", text, res.status, retryAfter);
+    }
+    throw new UsageError("http", text, res.status);
   }
   let json: unknown;
   try {

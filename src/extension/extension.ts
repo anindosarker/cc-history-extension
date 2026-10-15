@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext): void {
     usagePanel,
     usageLog,
     vscode.commands.registerCommand("ccHistory.showUsageLog", () => usageLog.show(true)),
-    vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh()),
+    vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh("manual")),
     vscode.commands.registerCommand("ccHistory.openUsage", () => usagePanel.open()),
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),
     vscode.window.registerFileDecorationProvider(status),

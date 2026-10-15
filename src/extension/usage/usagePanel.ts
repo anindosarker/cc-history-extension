@@ -40,12 +40,12 @@ export class UsagePanelManager implements vscode.Disposable {
       this.indexer.onDidChange(() => this.push()),
       panel.onDidDispose(() => this.closed()),
     );
-    void this.poller.refresh();
+    void this.poller.refresh("auto");
   }
 
   private onMessage(m: UsageWebviewToHost): void {
     if (m.type === "usageRequest") this.push();
-    else if (m.type === "usageRefresh") void this.poller.refresh();
+    else if (m.type === "usageRefresh") void this.poller.refresh("manual");
   }
 
   private push(): void {

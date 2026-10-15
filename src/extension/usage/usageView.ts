@@ -40,5 +40,7 @@ export function toUsageView(state: UsageState, week: WeekSummary, thresholds?: U
   if (state.snapshot) view.fetchedAt = state.snapshot.fetchedAt;
   if (state.plan) view.plan = state.plan;
   if (state.error) view.error = { reason: state.error.reason, message: state.error.message, at: state.error.at };
+  if (state.paused) view.paused = true;
+  if (state.manualWaitUntil !== undefined) view.waitUntil = state.manualWaitUntil;
   return view;
 }
