@@ -1,0 +1,23 @@
+{
+  "name": "cc-history-intro",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Remotion intro video for the Claude Code History VS Code extension",
+  "scripts": {
+    "preview": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Intro out/intro.mp4 --codec h264 --crf 18",
+    "postprocess": "sh scripts/postprocess.sh",
+    "render:all": "pnpm render && pnpm postprocess"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -2,6 +2,10 @@
 
 A read-only VS Code viewer for your Claude Code session logs. Every session, every project, no seven-day window. A status bar widget shows how much of your Claude Code rate limit is used.
 
+![A 27-second tour of the extension](media/intro.gif)
+
+[Watch the tour as an mp4](https://github.com/anindosarker/cc-history-extension/releases/download/v0.4.0/intro.mp4).
+
 ## Screenshots
 
 ![Sessions view grouped by project with live status dots](media/screenshots/tree.png)

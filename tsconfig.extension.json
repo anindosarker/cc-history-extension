@@ -19,6 +19,7 @@
     "tests"
   ],
   "exclude": [
-    "tests/**/*.tsx"
+    "tests/**/*.tsx",
+    "video"
   ]
 }

@@ -24,5 +24,8 @@
     "src/webview",
     "src/shared",
     "tests/**/*.tsx"
+  ],
+  "exclude": [
+    "video"
   ]
 }

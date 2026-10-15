@@ -4,3 +4,6 @@ out/
 .vscode-test/
 .DS_Store
 .ai/
+video/node_modules/
+video/out/
+media/intro.mp4

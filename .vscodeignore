@@ -20,3 +20,5 @@ pnpm-workspace.yaml
 **/*.map
 .ai/**
 CLAUDE.md
+video/**
+media/intro.*
