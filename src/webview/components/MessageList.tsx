@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
 import { nearBottomRight, scrollButtonsFor, type ScrollButtons } from "@/lib/scrollButtons";
+import { atBottom, atTop, SETTLE_START, settleNext } from "@/lib/settle";
 import type { Match, Row } from "@/lib/search";
 import { useContainerWidth } from "@/lib/useContainerWidth";
 import { cn } from "@/lib/utils";
@@ -25,9 +26,6 @@ interface Props {
   onToggleFold: (key: string, open: boolean) => void;
 }
 
-/** How long to keep nudging toward the bottom while rows are still being measured. */
-const SETTLE_ATTEMPTS = 40;
-const SETTLE_INTERVAL_MS = 32;
 /** How long the scroll buttons stay after the last scroll event. */
 const SCROLL_LINGER_MS = 1500;
 /** Longest we wait for a smooth scroll to finish before the settle loop takes over. */
@@ -110,67 +108,87 @@ export function MessageList({
   );
 
   /**
-   * Scroll to the top or bottom. The bottom case re-runs until the scroll position stops
-   * moving, because row heights are only measured once rows render.
+   * Scroll to the top or bottom and keep re-asserting the edge every frame until it holds for a few
+   * frames (see lib/settle): rows re-measure as they render, and the virtualizer's own scroll
+   * adjustments would otherwise leave the list short of the edge.
    */
   const jumpTo = useCallback((edge: "top" | "bottom") => {
     cancelJump.current?.();
     const el = parentRef.current;
     if (!el) return;
-    if (edge === "top") {
-      virtualizerRef.current.scrollToIndex(0, { align: "start" });
-      el.scrollTop = 0;
-      return;
-    }
     let cancelled = false;
-    let attempts = 0;
-    let stableChecks = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const step = () => {
-      if (cancelled) return;
+    let raf: number | undefined;
+    let state = SETTLE_START;
+    const assertEdge = () => {
       const last = itemCountRef.current - 1;
-      if (last < 0) return;
-      virtualizerRef.current.scrollToIndex(last, { align: "end" });
-      el.scrollTop = el.scrollHeight;
-      requestAnimationFrame(() => {
+      if (last < 0) return false;
+      if (edge === "top") {
+        virtualizerRef.current.scrollToIndex(0, { align: "start" });
+        el.scrollTop = 0;
+      } else {
+        virtualizerRef.current.scrollToIndex(last, { align: "end" });
+        el.scrollTop = el.scrollHeight;
+      }
+      return true;
+    };
+    const step = () => {
+      if (cancelled || !assertEdge()) return;
+      raf = requestAnimationFrame(() => {
         if (cancelled) return;
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-        stableChecks = atBottom ? stableChecks + 1 : 0;
-        attempts++;
-        if (stableChecks >= 3 || attempts >= SETTLE_ATTEMPTS) return;
-        timer = setTimeout(step, SETTLE_INTERVAL_MS);
+        const at = edge === "top" ? atTop(el.scrollTop) : atBottom(el.scrollTop, el.clientHeight, el.scrollHeight);
+        state = settleNext(state, at);
+        if (state.done) return;
+        raf = requestAnimationFrame(step);
       });
     };
     cancelJump.current = () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      if (raf !== undefined) cancelAnimationFrame(raf);
     };
     step();
   }, []);
 
-  /** Smooth version for the buttons and Home/End; the bottom hands over to the settle loop once the glide ends. */
+  /** Smooth version for the buttons and Home/End; the settle loop takes over once the glide ends. */
   const glideTo = useCallback(
     (edge: "top" | "bottom") => {
       const el = parentRef.current;
       if (!el) return;
       cancelJump.current?.();
-      if (edge === "top") {
-        el.scrollTo({ top: 0, behavior: "smooth" });
-        return;
-      }
       let done = false;
       const finish = () => {
         if (done) return;
         done = true;
         el.removeEventListener("scrollend", finish);
-        jumpTo("bottom");
+        clearTimeout(timer);
+        jumpTo(edge);
+      };
+      // scrollend may never fire when the virtualizer interrupts the glide, so a timer backs it up.
+      const timer = setTimeout(finish, SMOOTH_FALLBACK_MS);
+      cancelJump.current = () => {
+        done = true;
+        el.removeEventListener("scrollend", finish);
+        clearTimeout(timer);
       };
       el.addEventListener("scrollend", finish, { once: true });
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      setTimeout(finish, SMOOTH_FALLBACK_MS);
+      el.scrollTo({ top: edge === "top" ? 0 : el.scrollHeight, behavior: "smooth" });
     },
     [jumpTo],
   );
+
+  // Wheel, touch or pointer input from the user ends any jump in progress instead of fighting it.
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const cancel = () => cancelJump.current?.();
+    el.addEventListener("wheel", cancel, { passive: true });
+    el.addEventListener("touchstart", cancel, { passive: true });
+    el.addEventListener("pointerdown", cancel, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", cancel);
+      el.removeEventListener("touchstart", cancel);
+      el.removeEventListener("pointerdown", cancel);
+    };
+  }, []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
