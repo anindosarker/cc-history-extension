@@ -2,7 +2,7 @@
   "name": "cc-history",
   "displayName": "Claude Code History",
   "description": "Browse, search, diff and export all of your Claude Code sessions. No time cutoff.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "anindosarker",
   "license": "MIT",
   "private": true,
@@ -276,8 +276,8 @@
             "max"
           ],
           "enumDescriptions": [
-            "Every limit with a label, like \"5h 67% · wk 47% · F 92%\".",
-            "Every limit as bare numbers, like \"67 · 47 · 92\".",
+            "Every limit with a label, like \"5h 67% \u00b7 wk 47% \u00b7 F 92%\".",
+            "Every limit as bare numbers, like \"67 \u00b7 47 \u00b7 92\".",
             "Only the highest limit, like \"F 92%\"."
           ],
           "default": "full",

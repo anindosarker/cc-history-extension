@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+- Color accents: status dots and colored names on tool lines, +N -M counts with a mini diff for edits, yellow Bash summaries, blue agent names and mentions, fold counts by run status, yellow rule on usage-limit notices.
+- Scroll to top now settles on the first turn; Home and End too.
+- Human, locale-aware dates in the header and tooltips.
+- Project folder button with full-path tooltip, Finder reveal and a context menu; project tree nodes gain Open in Finder and Copy Path.
+- Truncated titles show an instant tooltip and wrap on click.
+- Status bar color coding settings: thresholds, color mode, color source, text format, pulse icon. Usage panel bars use the same thresholds.
+
 ## 0.3.1
 
 - Tool lines no longer overflow at narrow widths; MCP tool names show their short form.
