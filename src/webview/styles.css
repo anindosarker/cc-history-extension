@@ -167,6 +167,10 @@
     right: 16px;
   }
 }
+/* Recap card: a quiet left rule in the link colour; the body is content, so it keeps the full foreground. */
+.recap-card {
+  border-left-color: color-mix(in srgb, var(--link) 50%, transparent);
+}
 /* Folded work turns have no stamp: the fold line already carries the duration. */
 .fold-body .turn-time {
   display: none;

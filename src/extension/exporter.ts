@@ -18,7 +18,7 @@ export function buildTranscript(data: SessionData, opts: ExportOptions): string 
   lines.push(`Session: ${meta.sessionId}`);
   lines.push("");
   for (const turn of data.turns) {
-    if (turn.kind === "system" && !opts.includeToolResults) continue;
+    if ((turn.kind === "system" || turn.kind === "notice") && !opts.includeToolResults) continue;
     const body = renderTurn(turn, opts);
     if (!body) continue;
     lines.push(turnHeading(turn));
@@ -36,6 +36,10 @@ function turnHeading(turn: Turn): string {
       return turn.agentName ? `Agent (${turn.agentName}):` : "Agent:";
     case "system":
       return turn.label ? `System (${turn.label}):` : "System:";
+    case "recap":
+      return "Recap:";
+    case "notice":
+      return "Notice:";
     default:
       return "User:";
   }

@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { OpenAll, VisibleTurn } from "@/lib/search";
 import { countOccurrences, blockText } from "@/lib/search";
 import { formatClock, formatFullDateTime } from "@/lib/format";
-import { AgentTurn, SystemTurn } from "./InjectedTurn";
+import { AgentTurn, NoticeTurn, RecapTurn, SystemTurn } from "./InjectedTurn";
 import { ImageBlock } from "./ImageBlock";
 import { TextBlock } from "./TextBlock";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -27,6 +27,8 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
   const injectedCurrent = currentBlock === 0 ? currentOcc : -1;
   if (turn.kind === "agent") return <AgentTurn item={item} query={query} current={injectedCurrent} time={time} />;
   if (turn.kind === "system") return <SystemTurn item={item} query={query} current={injectedCurrent} time={time} />;
+  if (turn.kind === "recap") return <RecapTurn item={item} query={query} current={injectedCurrent} />;
+  if (turn.kind === "notice") return <NoticeTurn item={item} query={query} current={injectedCurrent} />;
   const body = (
     <div className="turn-blocks tier-1 flex flex-col gap-[14px] min-w-0">
       {blocks.map((b, bi) => {

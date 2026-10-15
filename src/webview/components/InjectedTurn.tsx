@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { VisibleTurn } from "@/lib/search";
-import { formatFullDateTime } from "@/lib/format";
+import { formatClock, formatFullDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 import { Markdown } from "./Markdown";
@@ -97,6 +97,52 @@ export const SystemTurn = memo(function SystemTurn({ item, query, current, time 
             </pre>
           </CollapsibleContent>
         </Collapsible>
+      </div>
+    </div>
+  );
+});
+
+/** An away_summary record: a small card with a left rule, the content the person came back to read. */
+export const RecapTurn = memo(function RecapTurn({ item, query, current }: Omit<Props, "time">) {
+  const body = bodyOf(item);
+  const ts = item.turn.timestamp;
+  return (
+    <div className="chat-turn py-[12px]" data-turn-index={item.index}>
+      <div className="chat-content">
+        <div className="recap-card border-l-2 pl-3 py-0.5">
+          <div className="flex items-center gap-3 select-none">
+            <span className="recap-label text-[11px] tracking-wide text-muted-foreground">RECAP</span>
+            <span className="fold-rule h-px flex-1" aria-hidden="true" />
+            {ts ? (
+              <span className="text-[11px] text-muted-foreground tier-3" title={formatFullDateTime(ts)}>
+                {formatClock(ts)}
+              </span>
+            ) : null}
+          </div>
+          <div className="recap-body mt-1 text-[13px] leading-[1.55] text-foreground">
+            <Markdown text={body} query={query} current={current} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+/** A compact_boundary or informational record: a centered one-line divider, like the date row. */
+export const NoticeTurn = memo(function NoticeTurn({ item, query, current }: Omit<Props, "time">) {
+  const body = bodyOf(item);
+  const ts = item.turn.timestamp;
+  return (
+    <div className="chat-turn notice-row py-[2px]" data-turn-index={item.index}>
+      <div
+        className="chat-content tier-2 flex items-center gap-3 leading-none select-none"
+        title={ts ? formatFullDateTime(ts) : undefined}
+      >
+        <span className="fold-rule h-px flex-1" aria-hidden="true" />
+        <span className="tier-3 min-w-0 max-w-[80%] truncate text-center text-[11px]">
+          <Highlight text={body} query={query} current={current} />
+        </span>
+        <span className="fold-rule h-px flex-1" aria-hidden="true" />
       </div>
     </div>
   );

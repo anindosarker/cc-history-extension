@@ -5,9 +5,13 @@ import {
   asRecord,
   blocksOf,
   classifyRecord,
+  extractCommandName,
   parseAgentText,
   parseTimestamp,
+  recapText,
   systemLabel,
+  systemRecordLabel,
+  systemRecordText,
   toolResultText,
   usageTotal,
   userPlainText,
@@ -21,6 +25,9 @@ import {
 export const MAX_TOOL_RESULT_CHARS = 200_000;
 /** Pasted images whose base64 is longer than this are replaced by a placeholder. */
 export const MAX_IMAGE_BASE64_CHARS = 3 * 1024 * 1024;
+
+/** A local_command record and the user echo of the same slash command this close together are one event. */
+export const COMMAND_DEDUPE_MS = 2000;
 
 /** Decoded size of a base64 string, ignoring padding. */
 export function base64Bytes(data: string): number {
@@ -66,6 +73,8 @@ export class SessionBuilder {
   private readonly toolUses = new Map<string, Extract<Block, { type: "tool_use" }>>();
   private lastAssistantMsgId: string | undefined;
   private lastUsageMsgId: string | undefined;
+  /** Last slash command seen (echo or local_command record), for the dedupe window. */
+  private lastCommand: { name: string; ts: number } | undefined;
 
   constructor(private readonly opts: ParseOptions = {}) {}
 
@@ -78,6 +87,38 @@ export class SessionBuilder {
     const ts = parseTimestamp(r.timestamp) ?? this.result.lastActivityAt ?? 0;
     if (kind === "toolResultOnly") {
       this.attachResults(r);
+      return;
+    }
+    if (kind === "recap" || kind === "notice") {
+      const text = systemRecordText(r) ?? "";
+      const uuid = r.uuid ?? `s-${this.result.turns.length}`;
+      const turn: Turn = {
+        uuid,
+        role: "user",
+        kind,
+        timestamp: ts,
+        blocks: [{ type: "text", text: kind === "recap" ? recapText(text) : text }],
+        subtype: r.subtype,
+      };
+      this.lastAssistantMsgId = undefined;
+      this.appendTurn(turn, ts);
+      return;
+    }
+    if (kind === "system" && r.type === "system") {
+      const text = systemRecordText(r) ?? "";
+      if (this.isDuplicateCommand(text, ts)) return;
+      const uuid = r.uuid ?? `s-${this.result.turns.length}`;
+      const turn: Turn = {
+        uuid,
+        role: "user",
+        kind,
+        timestamp: ts,
+        blocks: [{ type: "text", text }],
+        label: systemRecordLabel(r.subtype ?? "system", text),
+        subtype: r.subtype,
+      };
+      this.lastAssistantMsgId = undefined;
+      this.appendTurn(turn, ts);
       return;
     }
     if (kind === "user" || kind === "agent" || kind === "system") {
@@ -97,6 +138,7 @@ export class SessionBuilder {
         if (msg.summary) turn.summary = msg.summary;
       } else {
         const raw = userRawText(r.message?.content);
+        if (this.isDuplicateCommand(raw, ts)) return;
         turn = { uuid, role: "user", kind, timestamp: ts, blocks: [{ type: "text", text: raw }] };
         turn.label = systemLabel(raw) ?? "system";
       }
@@ -122,6 +164,18 @@ export class SessionBuilder {
 
   finish(): ParsedSession {
     return this.result;
+  }
+
+  /**
+   * True when the text is a slash-command echo of the same command as the last one, within the dedupe
+   * window; Claude Code writes both a user echo and a local_command system record for one command.
+   */
+  private isDuplicateCommand(text: string, ts: number): boolean {
+    const name = extractCommandName(text);
+    if (!name) return false;
+    const last = this.lastCommand;
+    this.lastCommand = { name, ts };
+    return last !== undefined && last.name === name && Math.abs(ts - last.ts) <= COMMAND_DEDUPE_MS;
   }
 
   /** Streaming writes one record per content block, all carrying the same message usage, so count each id once. */

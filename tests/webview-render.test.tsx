@@ -124,6 +124,68 @@ describe("agent and system turns in filters", () => {
   });
 });
 
+describe("recap and notice turns", () => {
+  const withRecords: Turn[] = [
+    { uuid: "1", role: "user", kind: "user", timestamp: 1_700_000_000_000, blocks: [{ type: "text", text: "go" }] },
+    {
+      uuid: "2",
+      role: "user",
+      kind: "recap",
+      subtype: "away_summary",
+      timestamp: 1_700_000_060_000,
+      blocks: [{ type: "text", text: "Goal: finish the **viewer**. Next: file links." }],
+    },
+    {
+      uuid: "3",
+      role: "user",
+      kind: "notice",
+      subtype: "informational",
+      timestamp: 1_700_000_120_000,
+      blocks: [{ type: "text", text: "Usage limit reached · continuing automatically at 7:50pm" }],
+    },
+    { uuid: "4", role: "assistant", kind: "assistant", timestamp: 1_700_000_180_000, blocks: [{ type: "text", text: "Done" }] },
+  ];
+  const all = { role: "all" as const, showThinking: true, showTools: true };
+
+  it("keeps the recap under every filter and hides notices with the tool toggle", () => {
+    const kinds = (visible: ReturnType<typeof applyFilters>) => visible.map((v) => v.turn.kind);
+    expect(kinds(applyFilters(withRecords, all))).toEqual(["user", "recap", "notice", "assistant"]);
+    expect(kinds(applyFilters(withRecords, { ...all, showTools: false }))).toEqual(["user", "recap", "assistant"]);
+    expect(kinds(applyFilters(withRecords, { ...all, role: "user" }))).toEqual(["user", "recap"]);
+    expect(kinds(applyFilters(withRecords, { ...all, role: "assistant" }))).toEqual(["recap", "assistant"]);
+  });
+
+  it("searches recap text and renders a card; a notice renders as a centered divider", () => {
+    const visible = applyFilters(withRecords, all);
+    expect(findMatches(visible, "viewer")).toEqual([{ turnIndex: 1, blockIndex: 0, occ: 0 }]);
+    expect(findMatches(visible, "usage limit")).toEqual([{ turnIndex: 2, blockIndex: 0, occ: 0 }]);
+    // Neither one is folded into a work run.
+    expect(buildRows(visible, [], new Map()).rows.map((r) => r.kind)).toEqual(["turn", "turn", "turn", "turn"]);
+    const html = renderToString(
+      <TooltipProvider>
+        {visible.map((v, i) => (
+          <TurnRow key={i} item={v} query="viewer" currentBlock={i === 1 ? 0 : -1} currentOcc={i === 1 ? 0 : -1} />
+        ))}
+      </TooltipProvider>,
+    );
+    const recap = html.slice(html.indexOf('data-turn-index="1"'), html.indexOf('data-turn-index="2"'));
+    expect(recap).toContain("recap-card");
+    expect(recap).toContain(">RECAP<");
+    expect(recap).toMatch(/title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"[^>]*>\d\d:\d\d</);
+    expect(recap).toContain("<strong>");
+    expect(recap).toContain('<mark data-current="true">viewer</mark>');
+    expect(recap).not.toContain("chat-bubble");
+    expect(recap).not.toContain("tier-2");
+    // The row's class list comes before its data attribute, so start the slice at the row's opening tag.
+    const notice = html.slice(html.lastIndexOf("<div", html.indexOf('data-turn-index="2"')), html.indexOf('data-turn-index="3"'));
+    expect(notice).toContain("notice-row");
+    expect(notice).toContain("fold-rule");
+    expect(notice).toContain("Usage limit reached · continuing automatically at 7:50pm");
+    expect(notice).toContain("tier-2");
+    expect(notice).not.toContain("chat-bubble");
+  });
+});
+
 describe("work folds", () => {
   const MIN = 60_000;
   const tool = (id: string, cmd: string): Block => ({

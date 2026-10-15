@@ -248,7 +248,7 @@ class SessionPanel {
         title: `${this.meta.title} - agent ${info.name}`,
         startedAt: parsed.startedAt ?? info.startedAt,
         lastActivityAt: parsed.lastActivityAt ?? info.endedAt,
-        messageCount: parsed.turns.length,
+        messageCount: parsed.turns.filter((t) => t.kind === "user" || t.kind === "assistant").length,
       },
       turns: parsed.turns,
       files: [],

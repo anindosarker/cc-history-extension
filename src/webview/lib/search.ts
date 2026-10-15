@@ -33,9 +33,12 @@ export function applyFilters(turns: Turn[], f: Filters): VisibleTurn[] {
   for (let i = 0; i < turns.length; i++) {
     const t = turns[i];
     if (!t) continue;
-    if (f.role !== "all" && t.kind !== f.role) continue;
-    // Injected system records are noise of the same class as tool calls.
-    if (t.kind === "system" && !f.showTools) continue;
+    // A recap is content the person wants to read: no filter hides it.
+    if (t.kind !== "recap") {
+      if (f.role !== "all" && t.kind !== f.role) continue;
+      // Injected system records and notices are noise of the same class as tool calls.
+      if ((t.kind === "system" || t.kind === "notice") && !f.showTools) continue;
+    }
     // Hiding tool calls hides the whole "Worked for" fold, including its thinking.
     if (!f.showTools && isWorkTurn(t)) continue;
     const blocks = t.blocks.filter((b) => {

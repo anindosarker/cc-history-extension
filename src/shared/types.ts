@@ -45,8 +45,10 @@ export type Block =
 /**
  * What a turn is. "agent" and "system" are user records injected by tooling
  * (teammate messages, system reminders, command echoes) rather than typed by a person.
+ * "recap" is an away_summary system record (content the person wants to read),
+ * "notice" a compact_boundary or informational one (a one-line divider).
  */
-export type TurnKind = "user" | "assistant" | "agent" | "system";
+export type TurnKind = "user" | "assistant" | "agent" | "system" | "recap" | "notice";
 
 export interface Turn {
   uuid: string;
@@ -60,6 +62,8 @@ export interface Turn {
   summary?: string;
   /** System turns: short label derived from the tag, like "task notification". */
   label?: string;
+  /** Turns built from a top-level system record: its subtype, like "away_summary". */
+  subtype?: string;
   /** Name of the subagent whose transcript this turn came from; absent for the main transcript. */
   agent?: string;
 }

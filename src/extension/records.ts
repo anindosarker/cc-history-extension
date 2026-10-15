@@ -1,6 +1,10 @@
 /** Loose shape of one jsonl record. Everything is optional because files vary by version. */
 export interface RawRecord {
   type?: string;
+  /** Top-level system records: "away_summary", "compact_boundary", "informational", ... */
+  subtype?: string;
+  /** Top-level system records: their one piece of text. */
+  content?: unknown;
   uuid?: string;
   parentUuid?: string | null;
   isSidechain?: boolean;
@@ -170,7 +174,47 @@ export function extractCommandName(content: unknown): string | undefined {
   return m?.[1] || undefined;
 }
 
-export type RecordKind = "user" | "agent" | "system" | "assistant" | "toolResultOnly" | "skip";
+export type RecordKind = "user" | "agent" | "system" | "assistant" | "toolResultOnly" | "recap" | "notice" | "skip";
+
+/** Subtypes of top-level system records that become a turn, and what kind. The rest are skipped. */
+const SYSTEM_RECORD_KINDS: Record<string, "recap" | "notice" | "system"> = {
+  away_summary: "recap",
+  compact_boundary: "notice",
+  informational: "notice",
+  scheduled_task_fire: "system",
+  bridge_status: "system",
+  local_command: "system",
+};
+
+/** Readable labels for the system-record subtypes shown as one-liners. */
+const SYSTEM_RECORD_LABELS: Record<string, string> = {
+  scheduled_task_fire: "scheduled task",
+  bridge_status: "remote control",
+};
+
+/** Trailing hint Claude Code appends to every recap; not part of the summary. */
+const RECAP_SUFFIX = /\s*\(disable recaps in \/config\)\s*$/;
+
+/** Text of a top-level system record, or undefined when it has none. */
+export function systemRecordText(r: RawRecord): string | undefined {
+  return typeof r.content === "string" && r.content.trim() ? r.content.trim() : undefined;
+}
+
+/** Kind of turn a top-level system record becomes: a recap card, a notice divider, a system line, or nothing. */
+export function systemRecordKind(r: RawRecord): "recap" | "notice" | "system" | "skip" {
+  if (r.type !== "system" || typeof r.subtype !== "string") return "skip";
+  if (!systemRecordText(r)) return "skip";
+  return SYSTEM_RECORD_KINDS[r.subtype] ?? "skip";
+}
+
+/** One-liner label for a system record: the command echo's own label, or a fixed name per subtype. */
+export function systemRecordLabel(subtype: string, text: string): string {
+  return systemLabel(text) ?? SYSTEM_RECORD_LABELS[subtype] ?? subtype.replace(/_/g, " ");
+}
+
+export function recapText(text: string): string {
+  return text.replace(RECAP_SUFFIX, "").trim();
+}
 
 /**
  * Decide whether a record contributes a visible turn, and of which kind. Shared by the indexer and the parser.
@@ -178,6 +222,7 @@ export type RecordKind = "user" | "agent" | "system" | "assistant" | "toolResult
  * arrives bundled with an injected reminder still counts as the person's prompt.
  */
 export function classifyRecord(r: RawRecord, opts: ClassifyOptions = {}): RecordKind {
+  if (r.type === "system") return r.isSidechain && !opts.sidechain ? "skip" : systemRecordKind(r);
   if (r.type !== "user" && r.type !== "assistant") return "skip";
   if (r.isMeta) return "skip";
   if (r.isSidechain && !opts.sidechain) return "skip";
