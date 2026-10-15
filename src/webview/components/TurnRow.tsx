@@ -42,13 +42,13 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
 
   if (isUser) {
     return (
-      <div className="group chat-turn px-4 py-[10px] flex flex-col items-end" data-turn-index={item.index}>
-        <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[14px] py-[10px]">{body}</div>
-        {time && (
-          <div className="mt-1 text-[11px] leading-none text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 select-none">
-            {time}
-          </div>
-        )}
+      <div className="chat-turn px-4 py-[10px] flex flex-col items-end" data-turn-index={item.index}>
+        <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[14px] py-[10px]">
+          {body}
+          {time && (
+            <div className="mt-1.5 text-right text-[11px] leading-none text-muted-foreground select-none">{time}</div>
+          )}
+        </div>
       </div>
     );
   }

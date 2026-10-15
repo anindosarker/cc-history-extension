@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { OpenAt } from "@shared/openAt";
-import type { Match, VisibleTurn } from "@/lib/search";
+import type { Match, Row } from "@/lib/search";
+import { FoldRow } from "./FoldRow";
 import { TurnRow } from "./TurnRow";
 
 interface Props {
-  items: VisibleTurn[];
+  rows: Row[];
+  /** Row index for each visible turn index, so a match can be scrolled to through its fold. */
+  rowOf: number[];
   query: string;
   current: Match | undefined;
   /** Changes whenever the current match should be scrolled to again. */
@@ -14,25 +17,38 @@ interface Props {
   openAt: OpenAt;
   /** Changes whenever the user flips the Old | New toggle. */
   jumpKey: number;
+  onToggleFold: (key: string, open: boolean) => void;
 }
 
 /** How long to keep nudging toward the bottom while rows are still being measured. */
 const SETTLE_ATTEMPTS = 40;
 const SETTLE_INTERVAL_MS = 32;
 
-export function MessageList({ items, query, current, scrollKey, loadingMore, openAt, jumpKey }: Props) {
+export function MessageList({
+  rows,
+  rowOf,
+  query,
+  current,
+  scrollKey,
+  loadingMore,
+  openAt,
+  jumpKey,
+  onToggleFold,
+}: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 140,
+    estimateSize: (i) => (rows[i]?.kind === "fold" && !rows[i].open ? 28 : 140),
     overscan: 6,
-    getItemKey: (i) => items[i]?.turn.uuid ?? i,
+    getItemKey: (i) => rows[i]?.key ?? i,
   });
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
-  const itemCountRef = useRef(items.length);
-  itemCountRef.current = items.length;
+  const itemCountRef = useRef(rows.length);
+  itemCountRef.current = rows.length;
+  const rowOfRef = useRef(rowOf);
+  rowOfRef.current = rowOf;
   const cancelJump = useRef<(() => void) | undefined>(undefined);
   const initialJumpDone = useRef(false);
 
@@ -77,10 +93,10 @@ export function MessageList({ items, query, current, scrollKey, loadingMore, ope
 
   // Initial position once every turn has arrived.
   useEffect(() => {
-    if (loadingMore || items.length === 0 || initialJumpDone.current) return;
+    if (loadingMore || rows.length === 0 || initialJumpDone.current) return;
     initialJumpDone.current = true;
     if (openAt === "newest") jumpTo("bottom");
-  }, [loadingMore, items.length, openAt, jumpTo]);
+  }, [loadingMore, rows.length, openAt, jumpTo]);
 
   // Live toggle.
   useEffect(() => {
@@ -92,10 +108,12 @@ export function MessageList({ items, query, current, scrollKey, loadingMore, ope
   useEffect(() => {
     if (!current) return;
     cancelJump.current?.();
-    virtualizer.scrollToIndex(current.turnIndex, { align: "center" });
-    // Rows are measured after paint, so give the virtualizer a moment before locating the mark.
+    const rowIndex = rowOfRef.current[current.turnIndex] ?? current.turnIndex;
+    virtualizer.scrollToIndex(rowIndex, { align: "center" });
+    // Rows are measured after paint (and folds may just have opened), so give the virtualizer
+    // a moment before locating the mark.
     const t = setTimeout(() => {
-      virtualizer.scrollToIndex(current.turnIndex, { align: "center" });
+      virtualizer.scrollToIndex(rowIndex, { align: "center" });
       requestAnimationFrame(() => {
         const el = parentRef.current?.querySelector('mark[data-current="true"]');
         el?.scrollIntoView({ block: "center" });
@@ -109,13 +127,13 @@ export function MessageList({ items, query, current, scrollKey, loadingMore, ope
   const virtualItems = virtualizer.getVirtualItems();
   return (
     <div ref={parentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-thin">
-      {items.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="p-6 text-muted-foreground text-center">No messages match the current filters.</div>
       ) : (
         <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
           {virtualItems.map((vi) => {
-            const item = items[vi.index];
-            const isCurrentTurn = current?.turnIndex === vi.index;
+            const row = rows[vi.index];
+            const isCurrentTurn = row.kind === "turn" && current?.turnIndex === row.visibleIndex;
             return (
               <div
                 key={vi.key}
@@ -129,12 +147,16 @@ export function MessageList({ items, query, current, scrollKey, loadingMore, ope
                   transform: `translateY(${vi.start}px)`,
                 }}
               >
-                <TurnRow
-                  item={item}
-                  query={query}
-                  currentBlock={isCurrentTurn && current ? current.blockIndex : -1}
-                  currentOcc={isCurrentTurn && current ? current.occ : -1}
-                />
+                {row.kind === "fold" ? (
+                  <FoldRow row={row} query={query} current={current} onToggle={onToggleFold} />
+                ) : (
+                  <TurnRow
+                    item={row.item}
+                    query={query}
+                    currentBlock={isCurrentTurn && current ? current.blockIndex : -1}
+                    currentOcc={isCurrentTurn && current ? current.occ : -1}
+                  />
+                )}
               </div>
             );
           })}

@@ -30,6 +30,8 @@
   --diff-removed: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
   --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editorWidget-background));
   --bubble: var(--vscode-editorWidget-background, color-mix(in srgb, currentColor 6%, transparent));
+  /* The user bubble is tinted with the link blue, which reads in both dark and light themes. */
+  --bubble-tint: var(--vscode-textLink-foreground, #3794ff);
   --inline-code-bg: color-mix(in srgb, currentColor 8%, transparent);
   --link: var(--vscode-textLink-foreground);
 }
@@ -108,6 +110,12 @@
 }
 .chat-bubble {
   background: var(--bubble);
+  background: color-mix(in srgb, var(--bubble-tint) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bubble-tint) 28%, transparent);
+}
+/* "Worked for 4m" fold: a quiet divider line that runs to the right edge. */
+.fold-rule {
+  background: var(--vscode-widget-border, var(--border));
 }
 .tool-pill,
 .tool-pre {
