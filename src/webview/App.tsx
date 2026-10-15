@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_OPEN_AT, type OpenAt } from "@shared/openAt";
 import type { HostToWebview } from "@shared/protocol";
@@ -6,6 +6,7 @@ import type { FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types"
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentsContext } from "@/lib/agents";
+import type { Appended } from "@/lib/live";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/vscode";
 import { AgentView, type AgentLoad } from "./components/AgentView";
@@ -16,10 +17,32 @@ import { MessagesView } from "./components/MessagesView";
 type State =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "loaded"; meta: SessionMeta; files: FileChange[]; turns: Turn[]; total: number; done: boolean };
+  | {
+      status: "loaded";
+      meta: SessionMeta;
+      files: FileChange[];
+      turns: Turn[];
+      total: number;
+      done: boolean;
+      /** Last batch of turns that arrived after the first load (live tail or reload). */
+      appended?: Appended;
+    };
 
 /** Whether the Files tab still shows main-only changes, is collecting subagent edits, or has them. */
 type FilesScope = "main" | "merging" | "merged";
+
+/** A reload in progress: the new turns collect here and replace the shown ones only once complete. */
+interface Reload {
+  meta: SessionMeta;
+  files: FileChange[];
+  turns: Turn[];
+}
+
+function countMessages(turns: readonly Turn[]): number {
+  let n = 0;
+  for (const t of turns) if (t.kind === "user" || t.kind === "assistant") n++;
+  return n;
+}
 
 export function App() {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -31,24 +54,64 @@ export function App() {
   const [agentView, setAgentView] = useState<string | undefined>(undefined);
   const [agentLoads, setAgentLoads] = useState<Record<string, AgentLoad>>({});
   const [filesScope, setFilesScope] = useState<FilesScope>("main");
+  const [live, setLive] = useState(false);
   // Row 2 of the header; the main messages view renders its search bar into it.
   const [searchSlot, setSearchSlot] = useState<HTMLDivElement | null>(null);
+  const reload = useRef<Reload | undefined>(undefined);
+  const agentViewRef = useRef(agentView);
+  agentViewRef.current = agentView;
+  const filesScopeRef = useRef(filesScope);
+  filesScopeRef.current = filesScope;
 
   useEffect(() => {
+    const finishReload = () => {
+      const r = reload.current;
+      if (!r) return;
+      reload.current = undefined;
+      setState((s) => {
+        const prev = s.status === "loaded" ? s : undefined;
+        const seq = (prev?.appended?.seq ?? 0) + 1;
+        const added = prev ? countMessages(r.turns) - countMessages(prev.turns) : 0;
+        return { status: "loaded", meta: r.meta, files: r.files, turns: r.turns, total: r.turns.length, done: true, appended: { seq, added } };
+      });
+      // The host dropped its parsed agents with the reload; the open one is fetched again.
+      setAgentLoads({});
+      const open = agentViewRef.current;
+      if (open) {
+        post({ type: "loadAgent", agentId: open });
+        setAgentLoads({ [open]: { status: "loading" } });
+      }
+      post({ type: "listAgents" });
+      if (filesScopeRef.current !== "main") {
+        setFilesScope("merging");
+        post({ type: "loadFiles" });
+      }
+    };
     const onMessage = (e: MessageEvent<HostToWebview>) => {
       const msg = e.data;
       switch (msg.type) {
         case "loading":
+          reload.current = undefined;
           setState({ status: "loading" });
           break;
         case "error":
+          reload.current = undefined;
           setState({ status: "error", message: msg.message });
           break;
         case "openAt":
           setOpenAt(msg.value);
           break;
+        case "live":
+          setLive(msg.live);
+          break;
         case "sessionStart":
           setOpenAt(msg.openAt);
+          if (msg.reload) {
+            reload.current = { meta: msg.meta, files: msg.files, turns: new Array<Turn>(msg.totalTurns) };
+            if (msg.totalTurns === 0) finishReload();
+            break;
+          }
+          reload.current = undefined;
           setAgents([]);
           setAgentView(undefined);
           setAgentLoads({});
@@ -63,13 +126,31 @@ export function App() {
           });
           post({ type: "listAgents" });
           break;
-        case "sessionTurns":
+        case "sessionTurns": {
+          const r = reload.current;
+          if (r) {
+            for (let i = 0; i < msg.turns.length; i++) r.turns[msg.offset + i] = msg.turns[i];
+            if (msg.done) finishReload();
+            break;
+          }
           setState((s) => {
             if (s.status !== "loaded") return s;
             const turns = s.turns.slice();
             for (let i = 0; i < msg.turns.length; i++) turns[msg.offset + i] = msg.turns[i];
             return { ...s, turns, done: msg.done };
           });
+          break;
+        }
+        case "sessionAppend":
+          setState((s) => {
+            if (s.status !== "loaded" || !s.done) return s;
+            const turns = s.turns.slice(0, msg.offset).concat(msg.turns);
+            const added = countMessages(turns) - countMessages(s.turns);
+            const seq = (s.appended?.seq ?? 0) + 1;
+            const files = msg.files && filesScopeRef.current === "main" ? msg.files : s.files;
+            return { ...s, meta: msg.meta, turns, files, total: turns.length, appended: { seq, added } };
+          });
+          if (filesScopeRef.current === "merged") setFilesScope("merging");
           break;
         case "agents":
           setAgents(msg.list);
@@ -95,6 +176,16 @@ export function App() {
             return { ...m, [msg.agentId]: { ...cur, turns, done: msg.done } };
           });
           break;
+        case "agentAppend":
+          setAgentLoads((m) => {
+            const cur = m[msg.agentId];
+            if (!cur || cur.status !== "loaded" || !cur.done) return m;
+            const turns = cur.turns.slice(0, msg.offset).concat(msg.turns);
+            const added = countMessages(turns) - countMessages(cur.turns);
+            const seq = (cur.appended?.seq ?? 0) + 1;
+            return { ...m, [msg.agentId]: { ...cur, turns, total: turns.length, tokens: msg.tokens, appended: { seq, added } } };
+          });
+          break;
         case "agentError":
           setAgentLoads((m) => ({ ...m, [msg.agentId]: { status: "error", message: msg.message } }));
           break;
@@ -114,6 +205,8 @@ export function App() {
     setJumpKey((k) => k + 1);
     post({ type: "setOpenAt", value });
   }, []);
+
+  const reloadSession = useCallback(() => post({ type: "reloadSession" }), []);
 
   const openAgent = useCallback((agentId: string) => {
     setTab("messages");
@@ -139,11 +232,13 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [agentView, closeAgent]);
 
-  // The Files tab pulls in subagent edits the first time it opens, when there are agents to read.
+  // The Files tab pulls in subagent edits the first time it opens (and again after an append), when there are agents to read.
   useEffect(() => {
-    if (tab !== "files" || filesScope !== "main" || agents.length === 0) return;
-    setFilesScope("merging");
-    post({ type: "loadFiles" });
+    if (tab !== "files" || agents.length === 0) return;
+    if (filesScope === "main") {
+      setFilesScope("merging");
+      post({ type: "loadFiles" });
+    }
   }, [tab, filesScope, agents.length]);
 
   const agentsValue = useMemo(() => ({ agents, openAgent }), [agents, openAgent]);
@@ -168,7 +263,7 @@ export function App() {
     );
   }
 
-  const { meta, files, turns, done } = state;
+  const { meta, files, turns, done, appended } = state;
   const agentIndex = agentView ? agents.findIndex((a) => a.agentId === agentView) : -1;
   const agent = agentIndex >= 0 ? agents[agentIndex] : undefined;
   const messagesActive = tab === "messages";
@@ -188,6 +283,8 @@ export function App() {
             filesCount={files.length}
             search={<div ref={setSearchSlot} className="flex flex-1 min-w-0 items-center" />}
             searchVisible={messagesActive && !agent}
+            live={live}
+            onReload={reloadSession}
           />
           <div className={messagesActive ? "flex-1 min-h-0 relative" : "hidden"}>
             {/* The main list stays laid out underneath so its scroll position survives the agent view. */}
@@ -204,6 +301,7 @@ export function App() {
                   openAt={openAt}
                   jumpKey={jumpKey}
                   searchSlot={searchSlot}
+                  appended={appended}
                 />
               )}
             </div>

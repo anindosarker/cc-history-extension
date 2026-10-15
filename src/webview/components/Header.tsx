@@ -13,6 +13,7 @@ import {
   Hash,
   MessageSquare,
   Play,
+  RefreshCw,
 } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
 import type { SessionMeta, SubagentInfo } from "@shared/types";
@@ -56,6 +57,10 @@ interface Props {
   width?: number;
   /** Test override: render the title tooltip open (it is otherwise hover driven and lives outside server output). */
   titleTooltipOpen?: boolean;
+  /** A live Claude process owns the session and is writing to it. */
+  live?: boolean;
+  /** Re-read the transcript from disk. */
+  onReload?: () => void;
 }
 
 /** At and above this width the muted "project · date · N messages" line sits inline after the title. */
@@ -161,6 +166,8 @@ export function Header({
   searchVisible,
   width,
   titleTooltipOpen,
+  live = false,
+  onReload,
 }: Props) {
   const rootRef = useRef<HTMLElement>(null);
   const measured = useContainerWidth(rootRef);
@@ -260,6 +267,29 @@ export function Header({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1 shrink-0">
+          {live && (
+            <span
+              className="live-indicator mr-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground select-none"
+              title="A Claude Code process is writing to this session"
+            >
+              <span className="agent-pulse inline-block size-2 rounded-full bg-[var(--vscode-charts-blue)]" aria-hidden="true" />
+              Live
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onReload?.()}
+                aria-label="Reload transcript"
+              >
+                <RefreshCw />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reload transcript</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { OpenAt } from "@shared/openAt";
+import { newMessagesPill, pillAfterScroll, pillLabel, type Appended } from "@/lib/live";
 import { nearBottomRight, scrollButtonsFor, type ScrollButtons } from "@/lib/scrollButtons";
 import { atBottom, atTop, SETTLE_START, settleNext } from "@/lib/settle";
 import type { Match, Row } from "@/lib/search";
@@ -24,6 +25,8 @@ interface Props {
   openAt: OpenAt;
   /** Changes whenever the user flips the Old | New toggle. */
   jumpKey: number;
+  /** Turns that arrived after the first load: follow the tail when at the bottom, else count them into the pill. */
+  appended?: Appended;
   onToggleFold: (key: string, open: boolean) => void;
 }
 
@@ -45,6 +48,7 @@ export function MessageList({
   loadingMore,
   openAt,
   jumpKey,
+  appended,
   onToggleFold,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -76,12 +80,20 @@ export function MessageList({
   const [scrolling, setScrolling] = useState(false);
   const [nearCorner, setNearCorner] = useState(false);
   const lingerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Live tail: whether the reader sat at the bottom as of the previous commit, and the pill count.
+  const wasAtBottom = useRef(true);
+  const atBottomBeforeBatch = useRef(true);
+  const [pill, setPill] = useState(0);
+  const pillRef = useRef(0);
+  pillRef.current = pill;
 
   const measureEdges = useCallback(() => {
     const el = parentRef.current;
     if (!el) return;
     const next = scrollButtonsFor(el.scrollTop, el.scrollHeight, el.clientHeight);
     setEdges((cur) => (cur.up === next.up && cur.down === next.down ? cur : next));
+    wasAtBottom.current = atBottom(el.scrollTop, el.clientHeight, el.scrollHeight);
+    if (pillRef.current) setPill(pillAfterScroll(pillRef.current, wasAtBottom.current));
   }, []);
 
   const onScroll = useCallback(() => {
@@ -97,8 +109,10 @@ export function MessageList({
     setNearCorner(nearBottomRight(e.clientX, e.clientY, el.getBoundingClientRect()));
   }, []);
 
-  // Edges change as rows get measured and as the list grows, not only on scroll.
+  // Edges change as rows get measured and as the list grows, not only on scroll. The pre-batch
+  // position is snapshotted first so the append effect below can read it after this commit's measure.
   useEffect(() => {
+    atBottomBeforeBatch.current = wasAtBottom.current;
     measureEdges();
   });
   useEffect(
@@ -209,6 +223,15 @@ export function MessageList({
     if (openAt === "newest") jumpTo("bottom");
   }, [loadingMore, rows.length, openAt, jumpTo]);
 
+  // New turns: stay pinned when the reader was at the bottom before the batch, otherwise offer the pill.
+  useEffect(() => {
+    if (!appended || appended.seq === 0 || loadingMore) return;
+    const next = newMessagesPill(pillRef.current, atBottomBeforeBatch.current, appended.added);
+    setPill(next.pill);
+    if (next.follow) jumpTo("bottom");
+    // Only a new batch should run this; jumpTo is stable.
+  }, [appended?.seq, loadingMore, jumpTo]);
+
   // Live toggle.
   useEffect(() => {
     if (jumpKey === 0) return;
@@ -237,6 +260,7 @@ export function MessageList({
 
   const virtualItems = virtualizer.getVirtualItems();
   const showButtons = (edges.up || edges.down) && (scrolling || nearCorner);
+  const showPill = pill > 0;
   const inGutter = width !== undefined && width >= GUTTER_WIDTH;
   const narrow = width !== undefined && width < NARROW_WIDTH;
   return (
@@ -297,9 +321,25 @@ export function MessageList({
           <div className="p-3 text-center text-muted-foreground">Loading more messages…</div>
         )}
       </div>
+      {showPill && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="new-messages-pill absolute bottom-3 right-4 h-7 rounded-full border border-border bg-background px-3 text-[12px] shadow-sm hover:bg-accent"
+          onClick={() => {
+            setPill(0);
+            glideTo("bottom");
+          }}
+          data-count={pill}
+        >
+          <ArrowDown />
+          {pillLabel(pill)}
+        </Button>
+      )}
       <div
         className={cn(
-          "scroll-buttons absolute bottom-3 right-4 flex flex-col gap-1 transition-opacity duration-200",
+          "scroll-buttons absolute right-4 flex flex-col gap-1 transition-opacity duration-200",
+          showPill ? "bottom-12" : "bottom-3",
           showButtons ? (inGutter ? "opacity-100" : "opacity-70") : "opacity-0 pointer-events-none",
         )}
         data-visible={showButtons ? "true" : "false"}

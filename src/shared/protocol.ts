@@ -5,6 +5,8 @@ import type { FileChange, SessionMeta, SubagentInfo, Turn } from "./types";
 export type WebviewToHost =
   | { type: "ready" }
   | { type: "loadSession" }
+  /** Re-read the whole transcript; the viewer keeps its scroll position, search and folds. */
+  | { type: "reloadSession" }
   | { type: "openDiff"; path: string; hunkIndex?: number }
   /** Open a file in an editor; relative paths resolve against the session cwd, line and column are 1-based. */
   | { type: "revealFile"; path: string; line?: number; column?: number }
@@ -33,7 +35,17 @@ export type HostToWebview =
       files: FileChange[];
       totalTurns: number;
       openAt: OpenAt;
+      /** A re-parse of a session already shown: the viewer swaps the turns in place. */
+      reload?: boolean;
     }
+  /**
+   * Turns appended to (or changed at the tail of) a running session. The viewer replaces
+   * everything from `offset` on. Files are the main transcript's own edits.
+   */
+  | { type: "sessionAppend"; offset: number; turns: Turn[]; meta: SessionMeta; files?: FileChange[] }
+  | { type: "agentAppend"; agentId: string; offset: number; turns: Turn[]; tokens: number }
+  /** Whether a live Claude process owns the session and wrote to it in the last two minutes. */
+  | { type: "live"; live: boolean }
   | { type: "openAt"; value: OpenAt }
   | { type: "sessionTurns"; turns: Turn[]; offset: number; done: boolean }
   | { type: "error"; message: string }

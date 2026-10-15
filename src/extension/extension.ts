@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
   status.setEnabled(getShowStatus());
   const tree = new SessionTreeProvider(indexer, status, context.extensionUri);
   const diffs = new DiffContentProvider();
-  const panels = new SessionPanelManager(context, diffs);
+  const panels = new SessionPanelManager(context, diffs, indexer);
   const view = vscode.window.createTreeView("ccHistory.sessions", { treeDataProvider: tree, showCollapseAll: true });
   const version = String((context.extension.packageJSON as { version?: unknown }).version ?? "0.0.0");
   // Poll outcomes only: never a token or a header value.

@@ -19,9 +19,11 @@ import { displayToolName } from "@shared/toolSummary";
 import { editCounts, editLines } from "@shared/editStats";
 import { runStatus, toolStatus } from "@/lib/toolStatus";
 import { AgentsContext } from "@/lib/agents";
+import { AgentRowLabel, StatusIcon, agentsSummary } from "@/components/AgentsButton";
+import { ToolUseBlock } from "@/components/ToolUseBlock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
-import type { Block, FileChange, SessionMeta, Turn } from "@shared/types";
+import type { Block, FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types";
 
 const turns: Turn[] = [
   {
@@ -914,5 +916,72 @@ describe("webview components render on the server", () => {
     expect(tip).toMatch(/text-muted-foreground[^>]*>b<\/div>/);
     expect(tip).toMatch(/text-muted-foreground[^>]*>main<\/div>/);
     expect(tip).toMatch(/text-muted-foreground[^>]*>sess<\/div>/);
+  });
+});
+
+describe("agent rows, status icons and the live header", () => {
+  const base = { filePath: "", size: 0 } as const;
+  const named: SubagentInfo = { ...base, agentId: "a1", name: "safeshots", description: "Privacy-safe screenshots and video", agentType: "general-purpose", status: "running" };
+  const unnamed: SubagentInfo = { ...base, agentId: "a2", description: "Find the config loader", agentType: "general-purpose", status: "done" };
+  const failed: SubagentInfo = { ...base, agentId: "a3", name: "video", description: "Record the tour", status: "failed" };
+  const unknown: SubagentInfo = { ...base, agentId: "a4", description: "Empty transcript", status: "unknown" };
+
+  it("leads with the name, keeps the description muted, and shows no badge or type for unnamed agents", () => {
+    const html = renderToString(
+      <>
+        <AgentRowLabel agent={named} />
+        <AgentRowLabel agent={unnamed} />
+      </>,
+    );
+    expect(html).toMatch(/agent-name[^>]*>safeshots<\/span><span class="[^"]*text-muted-foreground">Privacy-safe screenshots and video<\/span>/);
+    expect(html).toContain('title="safeshots  Privacy-safe screenshots and video\nType: general-purpose"');
+    expect(html).toMatch(/title="Find the config loader\nType: general-purpose"[^>]*><span class="truncate min-w-0">Find the config loader<\/span><\/span>/);
+    expect(html).not.toContain(">general-purpose<");
+  });
+
+  it("draws a pulsing blue dot, a green check, a red x and a grey dot per status, and sums them in the header", () => {
+    const html = renderToString(
+      <>
+        <StatusIcon status="running" />
+        <StatusIcon status="done" />
+        <StatusIcon status="failed" />
+        <StatusIcon status="unknown" />
+      </>,
+    );
+    expect(html).toMatch(/aria-label="Running"[^>]*data-status="running"[^>]*class="[^"]*agent-pulse[^"]*charts-blue/);
+    expect(html).toMatch(/<svg[^>]*lucide-check[^>]*charts-green[^>]*aria-label="Done"/);
+    expect(html).toMatch(/<svg[^>]*lucide-x[^>]*charts-red[^>]*aria-label="Failed"/);
+    expect(html).toMatch(/aria-label="Unknown"[^>]*data-status="unknown"[^>]*class="[^"]*bg-muted-foreground\/50/);
+    expect(agentsSummary([named, unnamed, failed, unknown])).toBe("Agents (4) · 1 done · 1 running · 1 failed");
+    expect(agentsSummary([named, unnamed])).toBe("Agents (2) · 1 done · 1 running");
+  });
+
+  it("links a spawn tool call to the agent by name, or by description when unnamed", () => {
+    const spawn = (id: string, name?: string): Block => ({ type: "tool_use", id, name: "Agent", input: name ? { name, prompt: "p" } : { prompt: "p" }, summary: "p" });
+    const html = renderToString(
+      <TooltipProvider>
+        <AgentsContext.Provider value={{ agents: [{ ...named, toolUseId: "t1" }, { ...unnamed, toolUseId: "t2" }], openAgent: () => {} }}>
+          <ToolUseBlock block={spawn("t1", "safeshots") as Extract<Block, { type: "tool_use" }>} query="" current={-1} />
+          <ToolUseBlock block={spawn("t2") as Extract<Block, { type: "tool_use" }>} query="" current={-1} />
+        </AgentsContext.Provider>
+      </TooltipProvider>,
+    );
+    expect(html).not.toContain("Open transcript<");
+    expect(html).toMatch(/agent-link[^>]*title="Open transcript\nsafeshots {2}Privacy-safe screenshots and video\nType: general-purpose"[^>]*><span class="agent-name truncate">safeshots<\/span><span class="[^"]*text-muted-foreground">Privacy-safe screenshots and video<\/span>/);
+    expect(html).toMatch(/agent-link[^>]*><span class="agent-name truncate">Find the config loader<\/span><\/button>/);
+  });
+
+  it("shows the Live indicator and the reload button in header row 1", () => {
+    const meta: SessionMeta = { sessionId: "s", filePath: "/f", cwd: "/a", projectName: "a", title: "T", titleSource: "ai", messageCount: 1, filesChanged: 0, mtime: 0, size: 0 };
+    const render = (live: boolean) =>
+      renderToString(
+        <TooltipProvider>
+          <Header meta={meta} turnCount={1} openAt="oldest" onOpenAtChange={() => {}} tab="messages" onTabChange={() => {}} filesCount={0} width={1000} live={live} onReload={() => {}} />
+        </TooltipProvider>,
+      );
+    const on = render(true);
+    expect(on).toMatch(/live-indicator[^>]*>.*agent-pulse.*Live<\/span>/s);
+    expect(on).toMatch(/aria-label="Reload transcript"[^>]*>.*aria-label="Resume"/s);
+    expect(render(false)).not.toContain("live-indicator");
   });
 });

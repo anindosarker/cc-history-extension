@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { OpenAt } from "@shared/openAt";
 import type { Turn } from "@shared/types";
+import type { Appended } from "@/lib/live";
 import { applyFilters, buildRows, findMatches, type Filters } from "@/lib/search";
 import { MessageList } from "./MessageList";
 import { DEFAULT_FILTERS, SearchBar } from "./SearchBar";
@@ -14,9 +15,11 @@ interface Props {
   jumpKey: number;
   /** Where to render the search bar; without one it sits in its own row above the list. */
   searchSlot?: HTMLElement | null;
+  /** Turns that arrived while the view was open; the list follows or shows the new-messages pill. */
+  appended?: Appended;
 }
 
-export function MessagesView({ turns, loadingMore, active, openAt, jumpKey, searchSlot }: Props) {
+export function MessagesView({ turns, loadingMore, active, openAt, jumpKey, searchSlot, appended }: Props) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [cur, setCur] = useState(0);
@@ -112,6 +115,7 @@ export function MessagesView({ turns, loadingMore, active, openAt, jumpKey, sear
         loadingMore={loadingMore}
         openAt={openAt}
         jumpKey={jumpKey}
+        appended={appended}
         onToggleFold={toggleFold}
       />
     </div>

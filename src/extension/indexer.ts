@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { getHideProjects, getProjectsDir } from "./config";
@@ -13,6 +14,9 @@ export class Indexer implements vscode.Disposable {
   private readonly byPath = new Map<string, SessionMeta>();
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
+  private readonly fileEmitter = new vscode.EventEmitter<string | undefined>();
+  /** Raw watcher events: the absolute path that changed, or undefined when the platform gives no name. */
+  readonly onDidChangeFile = this.fileEmitter.event;
   private watcher: fs.FSWatcher | undefined;
   private debounce: NodeJS.Timeout | undefined;
   private scanning: Promise<void> | undefined;
@@ -99,7 +103,8 @@ export class Indexer implements vscode.Disposable {
     this.stopWatching();
     const dir = getProjectsDir();
     if (!fs.existsSync(dir)) return;
-    const onEvent = () => {
+    const onEvent = (_event: string, filename: string | Buffer | null) => {
+      this.fileEmitter.fire(filename ? path.join(dir, String(filename)) : undefined);
       if (this.debounce) clearTimeout(this.debounce);
       this.debounce = setTimeout(() => void this.refresh(), WATCH_DEBOUNCE_MS);
     };
@@ -124,5 +129,6 @@ export class Indexer implements vscode.Disposable {
     this.stopWatching();
     if (this.debounce) clearTimeout(this.debounce);
     this.changeEmitter.dispose();
+    this.fileEmitter.dispose();
   }
 }
