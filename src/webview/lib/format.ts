@@ -10,6 +10,13 @@ export function formatTime(ts: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** Hours and minutes only, for the quiet per-turn meta line. */
+export function formatClock(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function formatDuration(ms: number): string {
   if (ms < 60_000) return "<1m";
   const mins = Math.floor(ms / 60_000);

@@ -72,6 +72,25 @@ describe("webview components render on the server", () => {
     expect((html.match(/data-current="true"/g) ?? []).length).toBe(1);
   });
 
+  it("renders quiet turns: user bubble, assistant meta line, no index badges", () => {
+    const visible = applyFilters(turns, { role: "all", showThinking: true, showTools: true });
+    const html = renderToString(
+      <TooltipProvider>
+        {visible.map((v, i) => (
+          <TurnRow key={i} item={v} query="" currentBlock={-1} currentOcc={-1} />
+        ))}
+      </TooltipProvider>,
+    );
+    expect(html).toContain('data-turn-index="0"');
+    expect(html).toContain('data-turn-index="1"');
+    expect(html).toContain("chat-bubble");
+    expect(html).toContain("tool-pill");
+    expect(html).toContain("Thinking…");
+    expect(html).toMatch(/>Claude</);
+    expect(html).not.toMatch(/>#\d+</);
+    expect(html).not.toContain("border-l-");
+  });
+
   it("renders the header, files tab and search bar", () => {
     const files: FileChange[] = [
       { path: "/a/b/c.ts", hunks: [{ tool: "Edit", before: "x", after: "y\nz", added: 2, removed: 1 }], added: 2, removed: 1, partial: true },

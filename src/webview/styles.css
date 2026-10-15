@@ -24,14 +24,13 @@
   --ring: var(--vscode-focusBorder);
   --radius: 4px;
 
-  --user-accent: var(--vscode-charts-blue, #3794ff);
-  --assistant-accent: var(--vscode-charts-purple, #b180d7);
-  --thinking-accent: var(--vscode-charts-yellow, #cca700);
   --mark: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
   --mark-current: var(--vscode-editor-findMatchBackground, #a8ac94);
   --diff-added: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
   --diff-removed: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
   --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editorWidget-background));
+  --bubble: var(--vscode-editorWidget-background, color-mix(in srgb, currentColor 6%, transparent));
+  --inline-code-bg: color-mix(in srgb, currentColor 8%, transparent);
   --link: var(--vscode-textLink-foreground);
 }
 
@@ -56,9 +55,6 @@
   --color-input: var(--input);
   --color-input-border: var(--input-border);
   --color-ring: var(--ring);
-  --color-user: var(--user-accent);
-  --color-assistant: var(--assistant-accent);
-  --color-thinking: var(--thinking-accent);
   --color-added: var(--diff-added);
   --color-removed: var(--diff-removed);
   --color-link: var(--link);
@@ -105,9 +101,25 @@
   }
 }
 
+/* Chat layout: quiet, mostly typography. */
+.chat-turn {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.chat-bubble {
+  background: var(--bubble);
+}
+.tool-pill,
+.tool-pre {
+  border-color: var(--vscode-widget-border, var(--border));
+}
+.tool-pre {
+  background: transparent;
+}
+
 /* Markdown body styling, kept small and VS Code flavoured. */
 .md {
-  line-height: 1.5;
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 .md > *:first-child {
@@ -121,11 +133,11 @@
 .md ol,
 .md blockquote,
 .md table {
-  margin: 0.5em 0;
+  margin: 0.45em 0;
 }
 .md ul,
 .md ol {
-  padding-left: 1.5em;
+  padding-left: 1.4em;
 }
 .md ul {
   list-style: disc;
@@ -134,39 +146,43 @@
   list-style: decimal;
 }
 .md li + li {
-  margin-top: 0.15em;
+  margin-top: 0;
+}
+.md li > p {
+  margin: 0;
 }
 .md h1,
 .md h2,
 .md h3,
 .md h4 {
   font-weight: 600;
-  margin: 0.9em 0 0.4em;
+  margin: 0.8em 0 0.3em;
   line-height: 1.3;
 }
 .md h1 {
-  font-size: 1.35em;
+  font-size: 15px;
 }
 .md h2 {
-  font-size: 1.2em;
+  font-size: 14px;
 }
-.md h3 {
-  font-size: 1.08em;
+.md h3,
+.md h4 {
+  font-size: 13px;
 }
 .md code {
   font-family: var(--font-mono);
   font-size: 0.92em;
-  background: var(--code-bg);
-  padding: 0.1em 0.3em;
+  background: var(--inline-code-bg);
+  padding: 0.05em 0.3em;
   border-radius: 3px;
 }
 .md pre {
   background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 0;
+  border-radius: 6px;
   padding: 0.6em 0.8em;
   overflow-x: auto;
-  margin: 0.6em 0;
+  margin: 0.5em 0;
 }
 .md pre code {
   background: transparent;
@@ -175,7 +191,7 @@
   white-space: pre;
 }
 .md blockquote {
-  border-left: 3px solid var(--border);
+  border-left: 2px solid var(--border);
   padding-left: 0.8em;
   color: var(--muted-foreground);
 }
@@ -191,7 +207,7 @@
   text-align: left;
 }
 .md th {
-  background: var(--muted);
+  font-weight: 600;
 }
 .md hr {
   border: 0;

@@ -84,15 +84,15 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
         >
           <Wrench />
         </Toggle>
-        <div className="flex items-center rounded-md border border-border overflow-hidden ml-1">
+        <div className="flex items-center gap-0.5 ml-1" role="group" aria-label="Role filter">
           {roles.map((r) => (
             <Tooltip key={r.value}>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   className={cn(
-                    "h-6 w-7 inline-flex items-center justify-center cursor-pointer [&_svg]:size-3.5 hover:bg-accent",
-                    filters.role === r.value && "bg-primary text-primary-foreground hover:bg-primary",
+                    "h-6 w-7 inline-flex items-center justify-center rounded-md cursor-pointer [&_svg]:size-3.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                    filters.role === r.value && "bg-accent text-foreground",
                   )}
                   onClick={() => onFiltersChange({ ...filters, role: r.value })}
                   aria-label={r.label}
@@ -124,12 +124,12 @@ function Toggle({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={active ? "secondary" : "ghost"}
+          variant="ghost"
           size="icon"
           onClick={onClick}
           aria-pressed={active}
           aria-label={label}
-          className={cn(!active && "opacity-60")}
+          className={cn(active ? "bg-accent text-foreground" : "text-muted-foreground")}
         >
           {children}
         </Button>

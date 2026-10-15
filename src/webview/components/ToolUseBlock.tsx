@@ -1,7 +1,6 @@
 import { memo, useEffect, useState } from "react";
-import { ChevronRight, Wrench } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { Block } from "@shared/types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { countOccurrences, toolUseParts } from "@/lib/search";
@@ -32,36 +31,35 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }
   const isError = block.result?.isError === true;
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
       <CollapsibleTrigger asChild>
         <button
           type="button"
           className={cn(
-            "flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-left hover:bg-accent cursor-pointer select-none",
+            "tool-pill inline-flex max-w-full items-center gap-1 rounded-[6px] border px-2 py-[3px] text-[11px] leading-none text-left text-muted-foreground hover:text-foreground cursor-pointer select-none",
             isError && "border-destructive/50",
           )}
           title={`${block.name} ${block.summary}`}
         >
-          <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
-          <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="font-semibold shrink-0">
+          <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
+          <span className="shrink-0">
             <Highlight text={block.name} query={query} current={chipCurrent} />
           </span>
-          <span className="min-w-0 truncate text-muted-foreground font-mono text-[0.92em]">
+          <span className="min-w-0 truncate font-mono opacity-80">
             <Highlight
               text={block.summary}
               query={query}
               current={chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1}
             />
           </span>
-          {isError && <Badge variant="destructive">error</Badge>}
-          {block.result === undefined && <Badge variant="muted">no result</Badge>}
+          {isError && <span className="shrink-0 text-destructive">error</span>}
+          {block.result === undefined && <span className="shrink-0 opacity-70">no result</span>}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-1 ml-1 flex flex-col gap-1.5 border-l-2 border-border pl-2">
+        <div className="mt-2 flex flex-col gap-2">
           <Section label="Input">
-            <pre className="mono-pre max-h-80 overflow-auto scroll-thin rounded-md bg-code border border-border p-2">
+            <pre className="tool-pre mono-pre max-h-80 overflow-auto scroll-thin rounded-[6px] border p-2 text-muted-foreground">
               <Highlight text={input} query={query} current={inputCurrent} />
             </pre>
           </Section>
@@ -84,8 +82,8 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-[0.85em] uppercase tracking-wide text-muted-foreground mb-0.5">{label}</div>
+    <div className="min-w-0">
+      <div className="text-[11px] text-muted-foreground mb-1 select-none">{label}</div>
       {children}
     </div>
   );
@@ -113,8 +111,8 @@ function ResultPre({
     <div>
       <pre
         className={cn(
-          "mono-pre max-h-[60vh] overflow-auto scroll-thin rounded-md border p-2",
-          isError ? "bg-destructive/10 border-destructive/40" : "bg-code border-border",
+          "tool-pre mono-pre max-h-[60vh] overflow-auto scroll-thin rounded-[6px] border p-2 text-muted-foreground",
+          isError && "border-destructive/40",
         )}
       >
         <Highlight text={showFull ? text : text.slice(0, RESULT_LIMIT)} query={query} current={current} />
@@ -127,7 +125,7 @@ function ResultPre({
           </Button>
         )}
         {truncatedByHost && (
-          <span className="text-[0.85em] text-muted-foreground">Result trimmed at 200,000 characters.</span>
+          <span className="text-[11px] text-muted-foreground">Result trimmed at 200,000 characters.</span>
         )}
       </div>
     </div>
