@@ -120,8 +120,32 @@ export function parseAgentText(text: string): AgentMessage {
   }
   let body = s.trim();
   const json = tryParseJsonObject(body);
-  if (json && typeof json.result === "string") body = json.result.trim();
+  if (json) body = unwrapAgentJson(json, body);
   return { agentName, summary, body };
+}
+
+/**
+ * Readable text for a structured teammate payload. The result string wins; an idle notification
+ * without one becomes a short status line; anything else keeps its JSON, pretty-printed.
+ */
+function unwrapAgentJson(json: Record<string, unknown>, raw: string): string {
+  if (typeof json.result === "string" && json.result.trim()) return json.result.trim();
+  for (const key of ["message", "text", "content"]) {
+    const v = json[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  if (json.type === "idle_notification") {
+    const reason = typeof json.idleReason === "string" ? json.idleReason : undefined;
+    const failure = typeof json.failureReason === "string" ? json.failureReason : undefined;
+    let line = reason ? `Idle (${reason})` : "Idle";
+    if (failure) line += `: ${failure}`;
+    return line;
+  }
+  try {
+    return JSON.stringify(json, null, 2);
+  } catch {
+    return raw;
+  }
 }
 
 function attr(attrs: string, name: string): string | undefined {

@@ -28,6 +28,27 @@ describe("user record kinds", () => {
     expect(s.firstPrompt).toBeUndefined();
   });
 
+  it("turns an idle notification without a result into a short status line, never raw JSON", () => {
+    const wrap = (payload: unknown) =>
+      userMsg(`<teammate-message teammate_id="skill-agent">${JSON.stringify(payload)}</teammate-message>`);
+    const available = parseSessionText(
+      wrap({ type: "idle_notification", from: "skill-agent", timestamp: "2026-09-18T09:24:41Z", idleReason: "available" }),
+    ).turns[0];
+    expect(available.kind).toBe("agent");
+    expect(available.blocks).toEqual([{ type: "text", text: "Idle (available)" }]);
+    const failed = parseSessionText(
+      wrap({ type: "idle_notification", from: "x", idleReason: "failed", failureReason: "hit the session limit" }),
+    ).turns[0];
+    expect(failed.blocks).toEqual([{ type: "text", text: "Idle (failed): hit the session limit" }]);
+    const bare = parseSessionText(wrap({ type: "idle_notification", from: "x", sessionId: "s" })).turns[0];
+    expect(bare.blocks).toEqual([{ type: "text", text: "Idle" }]);
+    // A message field is used when there is no result; other payloads stay readable JSON.
+    const msg = parseSessionText(wrap({ type: "note", message: "ping" })).turns[0];
+    expect(msg.blocks).toEqual([{ type: "text", text: "ping" }]);
+    const other = parseSessionText(wrap({ type: "custom", count: 2 })).turns[0];
+    expect(other.blocks[0]).toEqual({ type: "text", text: '{\n  "type": "custom",\n  "count": 2\n}' });
+  });
+
   it("files a cross-session message as an agent turn with the wrapper and tags stripped", () => {
     const t = parseSessionText(crossSession).turns[0];
     expect(t.kind).toBe("agent");

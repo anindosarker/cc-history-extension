@@ -97,10 +97,17 @@ function clock(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** "18:00 (in 55m)" within a day, "Wed 16:00 (in 5d 22h)" beyond. */
+const MINUTE_MS = 60_000;
+
+/**
+ * "18:00 (in 55m)" within a day, "Wed 16:00 (in 5d 22h)" beyond. The API reports resets a few
+ * hundred milliseconds short of the minute, so round to the nearest minute first; every surface
+ * (status bar tooltip and usage panel) goes through here and shows the same clock.
+ */
 export function formatResetAt(resetsAt: number, now: number): string {
-  const d = new Date(resetsAt);
-  const diff = resetsAt - now;
+  const rounded = Math.round(resetsAt / MINUTE_MS) * MINUTE_MS;
+  const d = new Date(rounded);
+  const diff = rounded - Math.round(now / MINUTE_MS) * MINUTE_MS;
   const time = diff < DAY_MS ? clock(d) : `${DAYS[d.getDay()]} ${clock(d)}`;
   return `${time} (in ${relativeDuration(diff)})`;
 }

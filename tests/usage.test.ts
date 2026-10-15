@@ -182,10 +182,23 @@ describe("usage formatting", () => {
     expect(later).toMatch(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2} \(in 5d 22h\)$/);
   });
 
+  it("rounds a reset reported just short of the minute to that minute, in every surface", () => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const resetsAt = Date.parse("2026-10-15T22:59:59.850Z");
+    const now = Date.parse("2026-10-15T22:05:00.000Z");
+    const rounded = new Date(Date.parse("2026-10-15T23:00:00.000Z"));
+    const clock = `${pad(rounded.getHours())}:${pad(rounded.getMinutes())}`;
+    expect(formatResetAt(resetsAt, now)).toBe(`${clock} (in 55m)`);
+    // The status bar tooltip reads the same clock as the panel.
+    const snap = parseUsage({ five_hour: { utilization: 10, resets_at: "2026-10-15T22:59:59.850365+00:00" } }, now);
+    expect(tooltipLines(snap, { now })[0]).toContain(`resets ${clock} (in 55m)`);
+  });
+
   it("lists one tooltip line per limit plus freshness and plan", () => {
     const now = fetchedAt + 12_000;
     const lines = tooltipLines(snap, { now, plan: "team (default_claude_max_5x)" });
-    expect(lines[0]).toMatch(/^5-hour window: 81% used, resets \d{2}:\d{2} \(in 54m\)$/);
+    // 11:59:59 rounds to 12:00, and 11:05:12 to 11:05, so the clock and the countdown agree on 55m.
+    expect(lines[0]).toMatch(/^5-hour window: 81% used, resets \d{2}:00 \(in 55m\)$/);
     expect(lines[1]).toMatch(/^Weekly \(all models\): 33%, resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2} \(in 5d 22h\)$/);
     expect(lines[2]).toBe("Weekly Fable: 64%");
     expect(lines[3]).toBe("Updated 12s ago");
