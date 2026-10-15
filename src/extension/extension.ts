@@ -9,6 +9,8 @@ import { loadSessionData, SessionPanelManager } from "./sessionPanel";
 import { SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
 import { SessionNode, SessionTreeProvider, type TreeNode } from "./treeProvider";
+import { UsageStatusBar } from "./usage/statusBar";
+import { UsagePoller } from "./usage/usagePoller";
 
 export function activate(context: vscode.ExtensionContext): void {
   const indexer = new Indexer(context);
@@ -17,6 +19,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const diffs = new DiffContentProvider();
   const panels = new SessionPanelManager(context, diffs);
   const view = vscode.window.createTreeView("ccHistory.sessions", { treeDataProvider: tree, showCollapseAll: true });
+  const version = String((context.extension.packageJSON as { version?: unknown }).version ?? "0.0.0");
+  const usage = new UsagePoller(version);
+  const usageBar = new UsageStatusBar(usage);
 
   const metaFrom = (arg: unknown): SessionMeta | undefined => {
     if (arg instanceof SessionNode) return arg.meta;
@@ -37,6 +42,10 @@ export function activate(context: vscode.ExtensionContext): void {
     diffs,
     panels,
     view,
+    usage,
+    usageBar,
+    vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh()),
+    vscode.commands.registerCommand("ccHistory.openUsage", () => usage.refresh()),
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),
     vscode.window.registerFileDecorationProvider(status),
     view.onDidChangeVisibility((e) => status.setVisible(e.visible)),
@@ -75,6 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  usage.start();
   void indexer.refresh().then(() => {
     indexer.startWatching();
     status.startWatching();
