@@ -11,7 +11,7 @@ export const MONO =
 
 /** Natural pixel sizes of the screenshots in public/, so frames never stretch. */
 export const SHOTS = {
-  tree: { file: "tree.png", w: 760, h: 1666 },
+  tree: { file: "tree.png", w: 712, h: 1662 },
   viewer: { file: "viewer.png", w: 2004, h: 1662 },
   search: { file: "search.png", w: 2004, h: 1662 },
   agents: { file: "agents.png", w: 2004, h: 800 },
