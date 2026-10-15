@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Marketplace listing renamed to "CC History" (the previous display name was taken). Everything inside VS Code is unchanged.
+
 ## 0.4.0
 
 - Usage widget hardening: the last good reading stays on screen instead of "?" when a poll fails, credential reads are retried, and every poll outcome goes to a "Claude Code History" output channel (Show Usage Log).

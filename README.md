@@ -4,7 +4,7 @@ A read-only VS Code viewer for your Claude Code session logs. Every session, eve
 
 ![A 27-second tour of the extension](media/intro.gif)
 
-[Watch the tour as an mp4](https://github.com/anindosarker/cc-history-extension/releases/download/v0.4.0/intro.mp4).
+[Watch the tour as an mp4](https://github.com/anindosarker/cc-history-extension/releases/download/v0.4.1/intro.mp4).
 
 ## Screenshots
 
