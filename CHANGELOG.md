@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.5
+
+- Pin projects to the top: current workspace projects are pinned by default, any project can be pinned from the row's hover action, and a current one can be unpinned. Pins are remembered per workspace. Pinned rows show a filled pin instead of the folder icon; the "cur" badge is gone.
+- The divider row below pinned projects is removed.
+
 ## 0.4.4
 
 - Only repository roots that contain the workspace are pinned as current; the home folder no longer is.
