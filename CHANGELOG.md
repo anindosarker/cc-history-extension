@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+- README screenshots and tour video removed; privacy-safe replacements follow.
+
 ## 0.4.1
 
 - Marketplace listing renamed to "CC History" (the previous display name was taken). Everything inside VS Code is unchanged.
