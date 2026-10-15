@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1
+
+- Blue-tinted user bubbles with the time inside, and date dividers between days.
+- Tool-only assistant runs fold into "Worked for Xm" rows with Expand all.
+- Tool calls render as plain "Used <tool>" lines.
+- Pasted images render inline inside user messages (3 MB cap).
+- Usage widget caches credentials in memory until the token expires; README documents what it reads.
+- Agent cards summarize idle notifications instead of showing raw JSON.
+
 ## 0.2.0
 
 - Status bar widget showing Claude Code 5-hour, weekly and scoped weekly usage with reset times.
