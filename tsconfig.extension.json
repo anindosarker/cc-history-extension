@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node",
+      "vscode"
+    ]
+  },
+  "include": [
+    "src/extension",
+    "src/shared",
+    "scripts",
+    "tests"
+  ],
+  "exclude": [
+    "tests/**/*.tsx"
+  ]
+}

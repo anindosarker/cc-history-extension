@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+/* shadcn tokens mapped onto VS Code theme variables so both light and dark themes work. */
+:root {
+  --background: var(--vscode-editor-background);
+  --foreground: var(--vscode-editor-foreground);
+  --card: var(--vscode-editorWidget-background);
+  --card-foreground: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground));
+  --popover: var(--vscode-editorHoverWidget-background);
+  --popover-foreground: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground));
+  --primary: var(--vscode-button-background);
+  --primary-foreground: var(--vscode-button-foreground);
+  --secondary: var(--vscode-button-secondaryBackground);
+  --secondary-foreground: var(--vscode-button-secondaryForeground);
+  --muted: var(--vscode-editorWidget-background);
+  --muted-foreground: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-list-hoverBackground);
+  --accent-foreground: var(--vscode-list-hoverForeground, var(--vscode-editor-foreground));
+  --destructive: var(--vscode-errorForeground);
+  --destructive-foreground: var(--vscode-button-foreground);
+  --border: var(--vscode-panel-border, var(--vscode-widget-border));
+  --input: var(--vscode-input-background);
+  --input-border: var(--vscode-input-border, var(--vscode-panel-border));
+  --ring: var(--vscode-focusBorder);
+  --radius: 4px;
+
+  --user-accent: var(--vscode-charts-blue, #3794ff);
+  --assistant-accent: var(--vscode-charts-purple, #b180d7);
+  --thinking-accent: var(--vscode-charts-yellow, #cca700);
+  --mark: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  --mark-current: var(--vscode-editor-findMatchBackground, #a8ac94);
+  --diff-added: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+  --diff-removed: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+  --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editorWidget-background));
+  --link: var(--vscode-textLink-foreground);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-border: var(--input-border);
+  --color-ring: var(--ring);
+  --color-user: var(--user-accent);
+  --color-assistant: var(--assistant-accent);
+  --color-thinking: var(--thinking-accent);
+  --color-added: var(--diff-added);
+  --color-removed: var(--diff-removed);
+  --color-link: var(--link);
+  --color-code: var(--code-bg);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --font-sans: var(--vscode-font-family, system-ui, sans-serif);
+  --font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: var(--vscode-font-size, 13px);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  a {
+    color: var(--link);
+  }
+  mark {
+    background: var(--mark);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  mark[data-current="true"] {
+    background: var(--mark-current);
+    outline: 1px solid var(--ring);
+  }
+  ::selection {
+    background: var(--vscode-editor-selectionBackground);
+  }
+}
+
+/* Markdown body styling, kept small and VS Code flavoured. */
+.md {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md table {
+  margin: 0.5em 0;
+}
+.md ul,
+.md ol {
+  padding-left: 1.5em;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md li + li {
+  margin-top: 0.15em;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-weight: 600;
+  margin: 0.9em 0 0.4em;
+  line-height: 1.3;
+}
+.md h1 {
+  font-size: 1.35em;
+}
+.md h2 {
+  font-size: 1.2em;
+}
+.md h3 {
+  font-size: 1.08em;
+}
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+.md pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.md pre code {
+  background: transparent;
+  padding: 0;
+  font-size: var(--vscode-editor-font-size, 12px);
+  white-space: pre;
+}
+.md blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8em;
+  color: var(--muted-foreground);
+}
+.md table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 0.25em 0.6em;
+  text-align: left;
+}
+.md th {
+  background: var(--muted);
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}
+.md img {
+  max-width: 100%;
+}
+
+.mono-pre {
+  font-family: var(--font-mono);
+  font-size: var(--vscode-editor-font-size, 12px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
