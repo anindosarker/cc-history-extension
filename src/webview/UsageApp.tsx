@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import {
+  DEFAULT_THRESHOLDS,
   ERROR_REASON_TEXT,
+  barLevel,
   elapsedFraction,
   formatAgo,
   formatResetAt,
   paceProjection,
   pct,
   type UsageHostToWebview,
+  type BarLevel,
   type UsageLimitView,
+  type UsageThresholds,
   type UsageView,
 } from "@shared/usage";
 import { Button } from "@/components/ui/button";
 import { post } from "@/lib/vscode";
 import { cn } from "@/lib/utils";
 
-const WARN_PCT = 75;
-const ERROR_PCT = 90;
 const CLOCK_TICK_MS = 10_000;
 
 /** Rate-limit usage panel: a few bars with pace markers and a summary of this week's sessions. */
@@ -85,7 +87,7 @@ export function UsageApp() {
         {hasReading ? (
           <div className="mt-5 flex flex-col gap-4">
             {view.limits.map((l) => (
-              <LimitRow key={l.label} limit={l} now={now} />
+              <LimitRow key={l.label} limit={l} now={now} thresholds={view.thresholds ?? DEFAULT_THRESHOLDS} />
             ))}
           </div>
         ) : (
@@ -127,13 +129,14 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
-function barColor(p: number): string {
-  if (p >= ERROR_PCT) return "var(--vscode-statusBarItem-errorBackground, var(--vscode-charts-red))";
-  if (p >= WARN_PCT) return "var(--vscode-statusBarItem-warningBackground, var(--vscode-charts-yellow))";
+/** The same thresholds and colour source as the status bar, so the two never disagree. */
+function barColor(level: BarLevel): string {
+  if (level === "error") return "var(--vscode-statusBarItem-errorBackground, var(--vscode-charts-red))";
+  if (level === "warning") return "var(--vscode-statusBarItem-warningBackground, var(--vscode-charts-yellow))";
   return "currentColor";
 }
 
-function LimitRow({ limit, now }: { limit: UsageLimitView; now: number }) {
+function LimitRow({ limit, now, thresholds }: { limit: UsageLimitView; now: number; thresholds: UsageThresholds }) {
   const elapsed = limit.resetsAt !== undefined ? elapsedFraction(limit.resetsAt, limit.windowMs, now) : undefined;
   const projected = elapsed !== undefined ? paceProjection(limit.pct, elapsed) : undefined;
   const fill = Math.min(100, Math.max(0, limit.pct));
@@ -152,7 +155,7 @@ function LimitRow({ limit, now }: { limit: UsageLimitView; now: number }) {
         aria-valuemax={100}
         aria-label={limit.label}
       >
-        <div className="h-full rounded-full" style={{ width: `${fill}%`, background: barColor(limit.pct) }} />
+        <div className="h-full rounded-full" style={{ width: `${fill}%`, background: barColor(barLevel(limit, thresholds)) }} />
         {elapsed !== undefined && (
           <div
             className="absolute top-[-3px] h-[10px] w-px bg-foreground/60"

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { limitRows, toUsageView } from "../src/extension/usage/usageView";
 import { weekSummary } from "../src/extension/usage/weekSummary";
 import type { SessionMeta } from "../src/shared/types";
-import { elapsedFraction, FIVE_HOURS_MS, paceProjection, SEVEN_DAYS_MS } from "../src/shared/usage";
+import { barLevel, elapsedFraction, FIVE_HOURS_MS, paceProjection, SEVEN_DAYS_MS } from "../src/shared/usage";
 
 const now = Date.UTC(2026, 9, 15, 12, 0, 0);
 const hour = 3_600_000;
@@ -85,10 +85,10 @@ describe("usage view mapping", () => {
       ],
     });
     expect(rows).toEqual([
-      { label: "5-hour window", pct: 81, resetsAt: now + hour, windowMs: FIVE_HOURS_MS },
-      { label: "Weekly (all models)", pct: 33, resetsAt: now + 5 * day, windowMs: SEVEN_DAYS_MS },
-      { label: "Weekly Fable", pct: 64, resetsAt: now + 5 * day, windowMs: SEVEN_DAYS_MS },
-      { label: "Extra usage", pct: 3, windowMs: SEVEN_DAYS_MS },
+      { key: "fiveHour", label: "5-hour window", pct: 81, resetsAt: now + hour, windowMs: FIVE_HOURS_MS },
+      { key: "weekly", label: "Weekly (all models)", pct: 33, resetsAt: now + 5 * day, windowMs: SEVEN_DAYS_MS },
+      { key: "Fable", label: "Weekly Fable", pct: 64, resetsAt: now + 5 * day, windowMs: SEVEN_DAYS_MS },
+      { key: "Extra", label: "Extra usage", pct: 3, windowMs: SEVEN_DAYS_MS },
     ]);
   });
 
@@ -108,5 +108,28 @@ describe("usage view mapping", () => {
     expect(view.error).toEqual({ reason: "network", message: "ECONNRESET", at: now });
     expect(view.plan).toBe("team");
     expect(toUsageView({ refreshing: true }, week)).toEqual({ limits: [], refreshing: true, week });
+    // The status bar's thresholds ride along so the panel colours its bars the same way.
+    const t = { warnAt: 50, errorAt: 60, colorBy: "fiveHour" as const };
+    expect(toUsageView({ refreshing: false }, week, t).thresholds).toEqual(t);
+  });
+
+  it("colours a bar by the host's thresholds and colour source", () => {
+    const custom = { warnAt: 50, errorAt: 60, colorBy: "max" as const };
+    expect(barLevel({ key: "fiveHour", pct: 49.9 }, custom)).toBeUndefined();
+    expect(barLevel({ key: "fiveHour", pct: 50 }, custom)).toBe("warning");
+    expect(barLevel({ key: "weekly", pct: 55 }, custom)).toBe("warning");
+    expect(barLevel({ key: "Fable", pct: 60 }, custom)).toBe("error");
+    expect(barLevel({ key: "Fable", pct: 99 }, custom)).toBe("error");
+    // Extra usage is never coloured, matching the status bar's decision.
+    expect(barLevel({ key: "Extra", pct: 99 }, custom)).toBeUndefined();
+    // In fiveHour mode only the five-hour bar carries colour.
+    const fiveHour = { ...custom, colorBy: "fiveHour" as const };
+    expect(barLevel({ key: "fiveHour", pct: 95 }, fiveHour)).toBe("error");
+    expect(barLevel({ key: "weekly", pct: 95 }, fiveHour)).toBeUndefined();
+    expect(barLevel({ key: "Fable", pct: 95 }, fiveHour)).toBeUndefined();
+    // Defaults are the status bar's 75 and 90.
+    expect(barLevel({ key: "weekly", pct: 75 })).toBe("warning");
+    expect(barLevel({ key: "weekly", pct: 90 })).toBe("error");
+    expect(barLevel({ key: "weekly", pct: 74 })).toBeUndefined();
   });
 });

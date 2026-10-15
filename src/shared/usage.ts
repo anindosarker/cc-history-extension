@@ -6,6 +6,8 @@ export const SEVEN_DAYS_MS = 7 * 86_400_000;
 export type UsageErrorReason = "no-credentials" | "token-expired" | "http" | "network" | "parse";
 
 export interface UsageLimitView {
+  /** "fiveHour", "weekly", or the scoped label ("Fable", "Opus", "Sonnet", "Extra"); matches the status bar segments. */
+  key: string;
   label: string;
   /** Percent of the window used. */
   pct: number;
@@ -29,6 +31,27 @@ export interface WeekSummary {
   topProjects: { name: string; sessions: number }[];
 }
 
+/** The colour rules the status bar follows, sent along so the panel's bars agree with it. */
+export interface UsageThresholds {
+  warnAt: number;
+  errorAt: number;
+  /** "max" colours every bar by its own value; "fiveHour" colours only the five-hour bar. */
+  colorBy: "max" | "fiveHour";
+}
+
+export const DEFAULT_THRESHOLDS: UsageThresholds = { warnAt: 75, errorAt: 90, colorBy: "max" };
+
+export type BarLevel = "warning" | "error" | undefined;
+
+/** Colour level of one bar: extra usage is never coloured, and in fiveHour mode only the five-hour bar is. */
+export function barLevel(limit: { key: string; pct: number }, t: UsageThresholds = DEFAULT_THRESHOLDS): BarLevel {
+  if (limit.key === "Extra") return undefined;
+  if (t.colorBy === "fiveHour" && limit.key !== "fiveHour") return undefined;
+  if (limit.pct >= t.errorAt) return "error";
+  if (limit.pct >= t.warnAt) return "warning";
+  return undefined;
+}
+
 export interface UsageView {
   /** Last good reading, kept while errors come and go. */
   fetchedAt?: number;
@@ -37,6 +60,8 @@ export interface UsageView {
   error?: UsageFailureView;
   refreshing: boolean;
   week: WeekSummary;
+  /** Absent only from hosts older than the setting; the panel then uses the defaults. */
+  thresholds?: UsageThresholds;
 }
 
 export type UsageWebviewToHost = { type: "usageRequest" } | { type: "usageRefresh" };

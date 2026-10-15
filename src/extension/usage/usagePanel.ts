@@ -52,7 +52,11 @@ export class UsagePanelManager implements vscode.Disposable {
     if (!this.panel) return;
     const msg: UsageHostToWebview = {
       type: "usageSnapshot",
-      view: toUsageView(this.poller.state, weekSummary(this.indexer.sessions, Date.now())),
+      view: toUsageView(this.poller.state, weekSummary(this.indexer.sessions, Date.now()), {
+        warnAt: this.poller.currentSettings.warnAt,
+        errorAt: this.poller.currentSettings.errorAt,
+        colorBy: this.poller.currentSettings.colorBy,
+      }),
     };
     void this.panel.webview.postMessage(msg);
   }
