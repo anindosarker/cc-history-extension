@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3
+
+- Usage polling throttled: 5 minute default, one fetch per machine via a shared cache, Retry-After aware backoff on HTTP 429 with an automatic pause, manual refresh limited to once a minute.
+- Privacy-safe screenshots and tour video rendered from synthetic demo data.
+- Current workspace projects pinned at the top of the tree with a divider; Sort by activity, name or session count.
+- Agents list by name in spawn order with running, done and failed states, matching Claude Code.
+- Live reload: open sessions tail new messages, with a Reload button, a new-messages pill and a Live indicator.
+
 ## 0.4.2
 
 - README screenshots and tour video removed; privacy-safe replacements follow.
