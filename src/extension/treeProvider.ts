@@ -79,7 +79,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly emitter = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sessionIcon: vscode.Uri;
-  private readonly pinIcon: { light: vscode.Uri; dark: vscode.Uri };
   private signature = "";
   private pending: NodeJS.Timeout | undefined;
 
@@ -90,10 +89,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     private readonly pins: PinStore,
   ) {
     this.sessionIcon = vscode.Uri.joinPath(extensionUri, "media", "session-claude.svg");
-    this.pinIcon = {
-      light: vscode.Uri.joinPath(extensionUri, "media", "pin-light.svg"),
-      dark: vscode.Uri.joinPath(extensionUri, "media", "pin-dark.svg"),
-    };
     indexer.onDidChange(() => this.scheduleRefresh());
     status.onDidChange(() => this.scheduleRefresh());
   }
@@ -183,10 +178,10 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       item.description = `${g.sessions.length} session${g.sessions.length === 1 ? "" : "s"}`;
       const { current, pinned, pinSource } = element.row;
       item.tooltip = projectTooltip({ cwd: g.cwd, current, pinned, ...(pinSource ? { pinSource } : {}) });
-      // Pinned rows swap the folder for a filled pin: the only always-visible icon slot a tree row has.
-      item.iconPath = pinned ? this.pinIcon : new vscode.ThemeIcon("folder");
+      item.iconPath = new vscode.ThemeIcon("folder");
       item.contextValue = projectContextValue(pinned);
-      // Only pinned projects carry the resource uri, so only they get the blue label.
+      // Only pinned projects carry the resource uri, so only they get the blue label (and the
+      // file icon theme's folder icon, as a resource label).
       if (pinned) item.resourceUri = projectUri(g.cwd);
       return item;
     }

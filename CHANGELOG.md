@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.6
+
+- Pinned project rows keep their folder icon; the hover action to unpin is a filled pin.
+
 ## 0.4.5
 
 - Pin projects to the top: current workspace projects are pinned by default, any project can be pinned from the row's hover action, and a current one can be unpinned. Pins are remembered per workspace. Pinned rows show a filled pin instead of the folder icon; the "cur" badge is gone.
