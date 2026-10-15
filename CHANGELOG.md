@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Two-tier visual hierarchy: message content in a centered 960px column at 14.5px, everything else (tool lines, thinking, folds, system lines, dates) small and dim.
+- Two-row header: title, agents chip and meta with a Resume button and a "..." menu; tabs, search with an in-field match counter and a Filters popover.
+- Fading scroll-to-top and scroll-to-bottom buttons; Home and End keys.
+- Recap cards from Claude Code session summaries, plus notices for compaction and usage-limit waits.
+- Clickable file paths in messages and tool lines, with line and column support.
+- Themed tab icons for session and usage panels.
+
 ## 0.2.1
 
 - Blue-tinted user bubbles with the time inside, and date dividers between days.
