@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatDuration, formatHumanDateTime } from "@/lib/format";
+import { formatDuration, formatFullDateTime, formatHumanDateTime } from "@/lib/format";
 import { useContainerWidth } from "@/lib/useContainerWidth";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/vscode";
@@ -78,13 +78,13 @@ export function iconTabsFor(width: number | undefined): boolean {
 }
 
 /** The lines shown in the title tooltip, in order; empty values are left out. */
-export function titleTooltipLines(meta: SessionMeta, now?: number): string[] {
+export function titleTooltipLines(meta: SessionMeta): string[] {
   const duration =
     meta.startedAt && meta.lastActivityAt ? formatDuration(meta.lastActivityAt - meta.startedAt) : undefined;
   return [
     meta.title,
     meta.projectName,
-    meta.startedAt ? formatHumanDateTime(meta.startedAt, { now }) : undefined,
+    meta.startedAt ? formatFullDateTime(meta.startedAt) : undefined,
     duration,
     meta.gitBranch,
     meta.sessionId,

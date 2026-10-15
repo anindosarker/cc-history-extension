@@ -1,5 +1,7 @@
 /** Types the usage panel and the host share. Host-only details (tokens, credentials) never appear here. */
 
+import { formatClock, formatWeekday, type DateFormatOptions } from "./time";
+
 export const FIVE_HOURS_MS = 5 * 3_600_000;
 export const SEVEN_DAYS_MS = 7 * 86_400_000;
 
@@ -92,7 +94,6 @@ export function paceProjection(pct: number, elapsed: number): number | undefined
 }
 
 const DAY_MS = 86_400_000;
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function pct(n: number): string {
   return `${Math.round(n)}%`;
@@ -117,22 +118,18 @@ export function formatAgo(ms: number): string {
   return `${Math.floor(ms / 3_600_000)}h ago`;
 }
 
-function clock(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 const MINUTE_MS = 60_000;
 
 /**
- * "18:00 (in 55m)" within a day, "Wed 16:00 (in 5d 22h)" beyond. The API reports resets a few
- * hundred milliseconds short of the minute, so round to the nearest minute first; every surface
- * (status bar tooltip and usage panel) goes through here and shows the same clock.
+ * "6:00 PM (in 55m)" within a day, "Wed 4:00 PM (in 5d 22h)" beyond, with the clock style of the
+ * locale. The API reports resets a few hundred milliseconds short of the minute, so round to the
+ * nearest minute first; every surface (status bar tooltip and usage panel) goes through here and
+ * shows the same clock.
  */
-export function formatResetAt(resetsAt: number, now: number): string {
+export function formatResetAt(resetsAt: number, now: number, opts: DateFormatOptions = {}): string {
   const rounded = Math.round(resetsAt / MINUTE_MS) * MINUTE_MS;
-  const d = new Date(rounded);
   const diff = rounded - Math.round(now / MINUTE_MS) * MINUTE_MS;
-  const time = diff < DAY_MS ? clock(d) : `${DAYS[d.getDay()]} ${clock(d)}`;
+  const clock = formatClock(rounded, opts);
+  const time = diff < DAY_MS ? clock : `${formatWeekday(rounded, opts)} ${clock}`;
   return `${time} (in ${relativeDuration(diff)})`;
 }

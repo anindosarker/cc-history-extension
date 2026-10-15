@@ -178,7 +178,7 @@ describe("recap and notice turns", () => {
     const recap = html.slice(html.indexOf('data-turn-index="1"'), html.indexOf('data-turn-index="2"'));
     expect(recap).toContain("recap-card");
     expect(recap).toContain(">RECAP<");
-    expect(recap).toMatch(/aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d\d:\d\d</);
+    expect(recap).toMatch(/aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d{1,2}:\d{2}( [AP]M)?</);
     expect(recap).toContain("<strong>");
     expect(recap).toContain('<mark data-current="true">viewer</mark>');
     expect(recap).not.toContain("chat-bubble");
@@ -645,17 +645,17 @@ describe("webview components render on the server", () => {
     expect(html).toContain("chat-bubble");
     // The timestamp sits inside the bubble and is always visible.
     const bubble = html.slice(html.indexOf("chat-bubble"), html.indexOf('data-turn-index="1"'));
-    expect(bubble).toMatch(/text-right[^>]*><span[^>]*class="time-stamp[^"]*"[^>]*>\d\d:\d\d<\/span><\/div>/);
+    expect(bubble).toMatch(/text-right[^>]*><span[^>]*class="time-stamp[^"]*"[^>]*>\d{1,2}:\d{2}( [AP]M)?<\/span><\/div>/);
     expect(html).toContain("tool-line");
     // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
     expect(html).toContain('Used <span class="tool-fn">Bash</span>');
     expect(html).toContain(">failed<");
     expect(html).not.toContain("tool-pill");
     expect(html).toContain("Thinking…");
-    // No "Claude · HH:MM" meta line; the assistant time is a hover-only stamp with the full date as tooltip.
+    // No "Claude · <time>" meta line; the assistant time is a hover-only stamp with the full date as tooltip.
     expect(html).not.toContain("Claude · ");
     const assistant = html.slice(html.indexOf('data-turn-index="1"'));
-    expect(assistant).toMatch(/turn-time[^>]*><span[^>]*aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d\d:\d\d<\/span>/);
+    expect(assistant).toMatch(/turn-time[^>]*><span[^>]*aria-label="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?"[^>]*>\d{1,2}:\d{2}( [AP]M)?<\/span>/);
     // Two tiers: the content column wraps every row, content is primary, tool and thinking lines secondary.
     expect((assistant.match(/chat-content/g) ?? []).length).toBe(1);
     expect(assistant).toContain("tier-1");
@@ -714,7 +714,7 @@ describe("webview components render on the server", () => {
     // Row 1: title with the full tooltip, inline meta, icon-only Resume, "..." menu trigger.
     const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
     expect(h1).toContain("text-[16px]");
-    expect(h1).toMatch(/title="Title\nb\nNov 1[45], 2023 · [\d:]+( [AP]M)?\n15m\nmain\nsess"/);
+    expect(h1).toMatch(/title="Title\nb\n(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?\n15m\nmain\nsess"/);
     expect(html).toMatch(/header-meta[^>]*>Nov 1[45], 2023 · [\d:]+( [AP]M)? · 2 messages</);
     // The project is a folder button carrying the full path; its tooltip and right-click menu hang off it.
     expect(html).toMatch(/folder-button[^>]*aria-label="Open folder \/a\/b"[^>]*data-path="\/a\/b"[^>]*>.*?<span class="min-w-0 truncate">b<\/span>/);

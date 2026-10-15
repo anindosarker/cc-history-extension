@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeToolUse } from "../src/shared/toolSummary";
-import { relativeTime } from "../src/extension/time";
+import { formatHumanDate, relativeTime } from "../src/extension/time";
 
 describe("tool summaries", () => {
   it("summarizes common tools", () => {
@@ -21,6 +21,9 @@ describe("relative time", () => {
     expect(relativeTime(now - 5 * 60_000, now)).toBe("5m ago");
     expect(relativeTime(now - 3 * 3_600_000, now)).toBe("3h ago");
     expect(relativeTime(now - 4 * 86_400_000, now)).toBe("4d ago");
-    expect(relativeTime(now - 45 * 86_400_000, now)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Beyond 30 days the tree shows a short locale date instead, with the year only when it differs.
+    const old = now - 45 * 86_400_000;
+    expect(relativeTime(old, now)).toBe(formatHumanDate(old, { now }));
+    expect(relativeTime(old, now)).not.toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

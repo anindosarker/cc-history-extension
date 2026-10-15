@@ -4,7 +4,8 @@ import type { Indexer } from "./indexer";
 import { activityMinute, activityOf, type ProjectGroup } from "./indexScan";
 import { STATUS_LABEL } from "./liveStatus";
 import { statusUri, type SessionStatusProvider } from "./statusProvider";
-import { formatDateTime, relativeTime } from "./time";
+import { relativeTime } from "./time";
+import { sessionTooltipLines } from "./treeTooltip";
 
 /** Sessions with activity this recent get the icon variant with a green dot. */
 
@@ -113,15 +114,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
 function sessionTooltip(m: SessionMeta, status: string | undefined): vscode.MarkdownString {
   const md = new vscode.MarkdownString();
-  md.appendMarkdown(`**${escapeMd(m.title)}**\n\n`);
-  if (status) md.appendMarkdown(`Status: ${status}\n\n`);
-  if (m.startedAt) md.appendMarkdown(`Started: ${formatDateTime(m.startedAt)}\n\n`);
-  if (m.gitBranch) md.appendMarkdown(`Branch: ${escapeMd(m.gitBranch)}\n\n`);
-  md.appendMarkdown(`Messages: ${m.messageCount}\n\n`);
-  md.appendMarkdown(`Session: \`${m.sessionId}\``);
+  md.appendMarkdown(sessionTooltipLines(m, status).join("\n\n"));
   return md;
-}
-
-function escapeMd(s: string): string {
-  return s.replace(/[\\`*_{}[\]()#+!|-]/g, "\\$&");
 }

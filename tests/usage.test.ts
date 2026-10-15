@@ -14,6 +14,7 @@ import {
   type UsageDisplaySettings,
 } from "../src/extension/usage/format";
 import { intervalMs, MAX_BACKOFF_MS, nextDelayMs } from "../src/extension/usage/schedule";
+import { formatClock } from "../src/shared/time";
 import { fetchUsage, parseUsage, UsageError, USAGE_URL } from "../src/extension/usage/usageClient";
 
 const sample = {
@@ -183,17 +184,26 @@ describe("usage formatting", () => {
     expect(formatAgo(3 * 60_000)).toBe("3m ago");
     const now = Date.UTC(2026, 9, 14, 12, 0, 0);
     const soon = formatResetAt(now + 55 * 60_000, now);
-    expect(soon).toMatch(/^\d{2}:\d{2} \(in 55m\)$/);
+    expect(soon).toBe(`${formatClock(now + 55 * 60_000)} (in 55m)`);
     const later = formatResetAt(now + 5 * 86_400_000 + 22 * 3_600_000, now);
-    expect(later).toMatch(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2} \(in 5d 22h\)$/);
+    expect(later).toMatch(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) .+ \(in 5d 22h\)$/);
+  });
+
+  it("writes reset clocks in the locale's style: 12 hour in en-US, 24 hour in de-DE", () => {
+    // Local times so the wall clock is the same in every zone.
+    const now = new Date(2026, 9, 14, 17, 5).getTime();
+    const resetsAt = new Date(2026, 9, 14, 18, 0).getTime();
+    expect(formatResetAt(resetsAt, now, { locale: "en-US" })).toBe("6:00 PM (in 55m)");
+    expect(formatResetAt(resetsAt, now, { locale: "de-DE" })).toBe("18:00 (in 55m)");
+    const nextWeek = new Date(2026, 9, 20, 16, 0).getTime();
+    expect(formatResetAt(nextWeek, now, { locale: "en-US" })).toBe("Tue 4:00 PM (in 5d 22h)");
+    expect(formatResetAt(nextWeek, now, { locale: "de-DE" })).toMatch(/^Di\.? 16:00 \(in 5d 22h\)$/);
   });
 
   it("rounds a reset reported just short of the minute to that minute, in every surface", () => {
-    const pad = (n: number) => String(n).padStart(2, "0");
     const resetsAt = Date.parse("2026-10-15T22:59:59.850Z");
     const now = Date.parse("2026-10-15T22:05:00.000Z");
-    const rounded = new Date(Date.parse("2026-10-15T23:00:00.000Z"));
-    const clock = `${pad(rounded.getHours())}:${pad(rounded.getMinutes())}`;
+    const clock = formatClock(Date.parse("2026-10-15T23:00:00.000Z"));
     expect(formatResetAt(resetsAt, now)).toBe(`${clock} (in 55m)`);
     // The status bar tooltip reads the same clock as the panel.
     const snap = parseUsage({ five_hour: { utilization: 10, resets_at: "2026-10-15T22:59:59.850365+00:00" } }, now);
@@ -204,8 +214,8 @@ describe("usage formatting", () => {
     const now = fetchedAt + 12_000;
     const lines = tooltipLines(snap, { now, plan: "team (default_claude_max_5x)" });
     // 11:59:59 rounds to 12:00, and 11:05:12 to 11:05, so the clock and the countdown agree on 55m.
-    expect(lines[0]).toMatch(/^5-hour window: 81% used, resets \d{2}:00 \(in 55m\)$/);
-    expect(lines[1]).toMatch(/^Weekly \(all models\): 33%, resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2} \(in 5d 22h\)$/);
+    expect(lines[0]).toMatch(/^5-hour window: 81% used, resets \d{1,2}:00( [AP]M)? \(in 55m\)$/);
+    expect(lines[1]).toMatch(/^Weekly \(all models\): 33%, resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}( [AP]M)? \(in 5d 22h\)$/);
     expect(lines[2]).toBe("Weekly Fable: 64%");
     expect(lines[3]).toBe("Updated 12s ago");
     expect(lines[4]).toBe("Plan: team (default_claude_max_5x)");

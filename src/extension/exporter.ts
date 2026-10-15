@@ -1,3 +1,4 @@
+import { formatFullDateTime } from "../shared/time";
 import type { SessionData, Turn } from "../shared/types";
 
 export interface ExportOptions {
@@ -13,7 +14,7 @@ export function buildTranscript(data: SessionData, opts: ExportOptions): string 
   const lines: string[] = [];
   lines.push(opts.heading ?? `# ${meta.title}`);
   lines.push(`Project: ${meta.cwd}`);
-  if (meta.startedAt) lines.push(`Date: ${new Date(meta.startedAt).toISOString()}`);
+  if (meta.startedAt) lines.push(`Date: ${formatFullDateTime(meta.startedAt)}`);
   if (meta.gitBranch) lines.push(`Branch: ${meta.gitBranch}`);
   lines.push(`Session: ${meta.sessionId}`);
   lines.push("");
