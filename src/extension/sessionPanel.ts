@@ -1,4 +1,3 @@
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { HostToWebview, WebviewToHost } from "../shared/protocol";
@@ -11,6 +10,7 @@ import { readLiveSessionIds } from "./liveStatus";
 import { parseSessionFile, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
 import { listSubagents, mergedFileChanges, parseSubagentFile } from "./subagents";
+import { webviewHtml } from "./webviewHtml";
 
 const CHUNK_THRESHOLD = 5000;
 const CHUNK_SIZE = 1000;
@@ -80,7 +80,7 @@ class SessionPanel {
       },
     );
     this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "icon.svg");
-    this.panel.webview.html = this.html(webviewRoot);
+    this.panel.webview.html = webviewHtml(this.panel.webview, webviewRoot, meta.title, "session");
     this.disposables.push(
       this.panel.webview.onDidReceiveMessage((m: WebviewToHost) => void this.onMessage(m)),
       this.panel.onDidDispose(() => this.dispose()),
@@ -264,34 +264,6 @@ class SessionPanel {
       this.post({ type: "sessionTurns", turns: slice, offset, done: offset + CHUNK_SIZE >= turns.length });
     }
   }
-
-  private html(webviewRoot: vscode.Uri): string {
-    const webview = this.panel.webview;
-    const script = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "index.js"));
-    const style = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "index.css"));
-    const nonce = crypto.randomBytes(16).toString("base64");
-    const csp = [
-      "default-src 'none'",
-      `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `font-src ${webview.cspSource}`,
-      `img-src ${webview.cspSource} data:`,
-      `script-src 'nonce-${nonce}'`,
-    ].join("; ");
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="${style}">
-<title>${escapeHtml(this.meta.title)}</title>
-</head>
-<body>
-<div id="root"></div>
-<script nonce="${nonce}" type="module" src="${script}"></script>
-</body>
-</html>`;
-  }
 }
 
 async function revealFile(p: string): Promise<void> {
@@ -300,8 +272,4 @@ async function revealFile(p: string): Promise<void> {
     return;
   }
   await vscode.window.showTextDocument(vscode.Uri.file(p), { preview: true });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 }

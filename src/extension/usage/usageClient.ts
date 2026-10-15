@@ -1,3 +1,8 @@
+import type { UsageErrorReason } from "../../shared/usage";
+
+export type { UsageErrorReason };
+
+
 export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 export const USAGE_TIMEOUT_MS = 10_000;
 
@@ -19,8 +24,6 @@ export interface UsageSnapshot {
   /** Per-model or scoped weekly shares such as Fable, Opus, Sonnet, plus extra usage when enabled. */
   scoped: ScopedLimit[];
 }
-
-export type UsageErrorReason = "no-credentials" | "token-expired" | "http" | "network" | "parse";
 
 export class UsageError extends Error {
   constructor(
