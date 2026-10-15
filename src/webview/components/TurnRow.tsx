@@ -28,7 +28,7 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
   if (turn.kind === "agent") return <AgentTurn item={item} query={query} current={injectedCurrent} time={time} />;
   if (turn.kind === "system") return <SystemTurn item={item} query={query} current={injectedCurrent} time={time} />;
   const body = (
-    <div className="flex flex-col gap-2 min-w-0">
+    <div className="turn-blocks tier-1 flex flex-col gap-[14px] min-w-0">
       {blocks.map((b, bi) => {
         const cur = bi === currentBlock ? currentOcc : -1;
         const hasMatch = query !== "" && countOccurrences(blockText(b), query) > 0;
@@ -49,28 +49,38 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
 
   if (isUser) {
     return (
-      <div className="chat-turn px-4 py-[10px] flex flex-col items-end" data-turn-index={item.index}>
-        <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[14px] py-[10px]">
-          {body}
-          {time && (
-            <div
-              className="mt-1.5 text-right text-[11px] leading-none text-muted-foreground select-none"
-              title={fullTime}
-            >
-              {time}
-            </div>
-          )}
+      <div className="chat-turn py-[18px]" data-turn-index={item.index}>
+        <div className="chat-content flex flex-col items-end">
+          <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[18px] py-[14px]">
+            {body}
+            {time && (
+              <div
+                className="mt-[6px] text-right text-[11px] leading-none text-muted-foreground select-none"
+                title={fullTime}
+              >
+                {time}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="chat-turn px-4 py-[10px]" data-turn-index={item.index}>
-      <div className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none" title={fullTime}>
-        {["Claude", time].filter(Boolean).join(" · ")}
+    <div className="chat-turn py-[18px]" data-turn-index={item.index}>
+      <div className="chat-content relative">
+        {time && (
+          <span
+            className="turn-time absolute top-0 text-[11px] leading-none text-muted-foreground select-none"
+            title={fullTime}
+            aria-hidden="true"
+          >
+            {time}
+          </span>
+        )}
+        {body}
       </div>
-      {body}
     </div>
   );
 });

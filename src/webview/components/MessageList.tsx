@@ -43,8 +43,8 @@ export function MessageList({
     estimateSize: (i) => {
       const r = rows[i];
       if (!r) return 140;
-      if (r.kind === "date") return 28;
-      return r.kind === "fold" && !r.open ? 28 : 140;
+      if (r.kind === "date") return 20;
+      return r.kind === "fold" && !r.open ? 28 : 160;
     },
     overscan: 6,
     getItemKey: (i) => rows[i]?.key ?? i,

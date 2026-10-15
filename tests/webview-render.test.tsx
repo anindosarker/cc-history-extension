@@ -225,7 +225,9 @@ describe("work folds", () => {
       </TooltipProvider>,
     );
     expect(closed).toContain("Worked for 5m");
-    expect(closed).toContain("· 4 tool calls");
+    expect(closed).toContain(">4 tool calls<");
+    // The left side carries only the chevron and the duration; counts sit at the right end.
+    expect(closed).not.toContain("· 4 tool calls");
     expect(closed).toContain('aria-expanded="false"');
     expect(closed).not.toContain("tool-line");
     expect(closed).toContain(">Expand all<");
@@ -246,7 +248,7 @@ describe("work folds", () => {
       </TooltipProvider>,
     );
     expect(html).toContain("Worked for 0s");
-    expect(html).toContain("· 1 tool call<");
+    expect(html).toContain(">1 tool call<");
   });
 });
 
@@ -308,7 +310,7 @@ describe("webview components render on the server", () => {
     expect((html.match(/data-current="true"/g) ?? []).length).toBe(1);
   });
 
-  it("renders quiet turns: user bubble, assistant meta line, no index badges", () => {
+  it("renders quiet turns: user bubble, hover-only assistant stamp, no index badges", () => {
     const stamped = turns.map((t) => ({ ...t, timestamp: 1_700_000_000_000 }));
     const visible = applyFilters(stamped, { role: "all", showThinking: true, showTools: true });
     const html = renderToString(
@@ -323,15 +325,21 @@ describe("webview components render on the server", () => {
     expect(html).toContain("chat-bubble");
     // The timestamp sits inside the bubble and is always visible.
     const bubble = html.slice(html.indexOf("chat-bubble"), html.indexOf('data-turn-index="1"'));
-    expect(bubble).toMatch(/text-right[^>]*>\d\d:\d\d<\/div><\/div><\/div>/);
-    expect(html).not.toContain("group-hover:opacity-100");
+    expect(bubble).toMatch(/text-right[^>]*>\d\d:\d\d<\/div><\/div><\/div><\/div>/);
     expect(html).toContain("tool-line");
     // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
     expect(html).toContain("Used <!-- -->Bash");
     expect(html).toContain(">failed<");
     expect(html).not.toContain("tool-pill");
     expect(html).toContain("Thinking…");
-    expect(html).toMatch(/>Claude · \d\d:\d\d</);
+    // No "Claude · HH:MM" meta line; the assistant time is a hover-only stamp with the full date as tooltip.
+    expect(html).not.toContain("Claude · ");
+    const assistant = html.slice(html.indexOf('data-turn-index="1"'));
+    expect(assistant).toMatch(/turn-time[^>]*title="(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 \d\d:\d\d:\d\d"[^>]*>\d\d:\d\d<\/span>/);
+    // Two tiers: the content column wraps every row, content is primary, tool and thinking lines secondary.
+    expect((assistant.match(/chat-content/g) ?? []).length).toBe(1);
+    expect(assistant).toContain("tier-1");
+    expect((assistant.match(/tier-2/g) ?? []).length).toBe(2);
     expect(html).not.toMatch(/>#\d+</);
     expect(html).not.toContain("border-l-");
   });

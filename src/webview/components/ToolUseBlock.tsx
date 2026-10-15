@@ -38,46 +38,46 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
   const spawned = agentForToolUse(agents, block);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
+    <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="tool-line flex min-w-0 max-w-full items-center gap-1.5 text-[13px] leading-snug text-left text-muted-foreground hover:text-foreground cursor-pointer select-none"
-          title={`${block.name} ${block.summary}`}
-          aria-expanded={open}
-        >
-          <span className="shrink-0">
-            {"Used "}
-            <Highlight text={block.name} query={query} current={chipCurrent} />
-          </span>
-          {isError && <span className="shrink-0 text-[11px] text-destructive">failed</span>}
-          <ChevronRight className={cn("size-3 shrink-0 opacity-70 transition-transform", open && "rotate-90")} />
-          <span className="min-w-0 truncate opacity-60">
-            <Highlight
-              text={block.summary}
-              query={query}
-              current={chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1}
-            />
-          </span>
-          {block.result === undefined && <span className="shrink-0 text-[11px] opacity-60">no result</span>}
-        </button>
-      </CollapsibleTrigger>
-      {spawned && (
-        <button
-          type="button"
-          className="shrink-0 text-[11px] text-link hover:underline cursor-pointer"
-          onClick={() => openAgent(spawned.agentId)}
-          title={`Open the ${spawned.name} transcript`}
-        >
-          Open transcript
-        </button>
-      )}
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="tool-line tier-hover flex min-w-0 max-w-full items-center gap-1.5 leading-snug text-left cursor-pointer select-none"
+            title={`${block.name} ${block.summary}`}
+            aria-expanded={open}
+          >
+            <span className="shrink-0">
+              {"Used "}
+              <Highlight text={block.name} query={query} current={chipCurrent} />
+            </span>
+            {isError && <span className="shrink-0 text-[11px] text-destructive">failed</span>}
+            <ChevronRight className={cn("size-3 shrink-0 tier-3 transition-transform", open && "rotate-90")} />
+            <span className="min-w-0 truncate tier-3">
+              <Highlight
+                text={block.summary}
+                query={query}
+                current={chipCurrent >= 0 ? chipCurrent - countOccurrences(block.name, query) : -1}
+              />
+            </span>
+            {block.result === undefined && <span className="shrink-0 text-[11px] tier-3">no result</span>}
+          </button>
+        </CollapsibleTrigger>
+        {spawned && (
+          <button
+            type="button"
+            className="shrink-0 text-[11px] text-link hover:underline cursor-pointer"
+            onClick={() => openAgent(spawned.agentId)}
+            title={`Open the ${spawned.name} transcript`}
+          >
+            Open transcript
+          </button>
+        )}
       </div>
       <CollapsibleContent>
         <div className="mt-2 flex flex-col gap-2">
           <Section label="Input">
-            <pre className="tool-pre mono-pre max-h-80 overflow-auto scroll-thin rounded-[6px] border p-2 text-muted-foreground">
+            <pre className="tool-pre mono-pre max-h-80 overflow-auto scroll-thin rounded-[6px] border p-2">
               <Highlight text={input} query={query} current={inputCurrent} />
             </pre>
           </Section>
@@ -101,7 +101,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({ block, query, current, 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] text-muted-foreground mb-1 select-none">{label}</div>
+      <div className="text-[11px] tier-3 mb-1 select-none">{label}</div>
       {children}
     </div>
   );
@@ -129,7 +129,7 @@ function ResultPre({
     <div>
       <pre
         className={cn(
-          "tool-pre mono-pre max-h-[60vh] overflow-auto scroll-thin rounded-[6px] border p-2 text-muted-foreground",
+          "tool-pre mono-pre max-h-[60vh] overflow-auto scroll-thin rounded-[6px] border p-2",
           isError && "border-destructive/40",
         )}
       >
@@ -143,7 +143,7 @@ function ResultPre({
           </Button>
         )}
         {truncatedByHost && (
-          <span className="text-[11px] text-muted-foreground">Result trimmed at 200,000 characters.</span>
+          <span className="text-[11px] tier-3">Result trimmed at 200,000 characters.</span>
         )}
       </div>
     </div>

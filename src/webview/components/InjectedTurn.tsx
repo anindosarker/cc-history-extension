@@ -39,30 +39,32 @@ export const AgentTurn = memo(function AgentTurn({ item, query, current, time }:
   const line = item.turn.summary || preview(body);
   const name = item.turn.agentName ?? "agent";
   return (
-    <div className="chat-turn px-4 py-[10px]" data-turn-index={item.index}>
-      <div
-        className="mb-1.5 text-[11px] leading-none text-muted-foreground select-none"
-        title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
-      >
-        {["Agent", name, time].filter(Boolean).join(" · ")}
-      </div>
-      <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="tool-pill flex w-full max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-[5px] text-left text-[12px] leading-snug text-muted-foreground hover:text-foreground cursor-pointer select-none"
-            title={line}
+    <div className="chat-turn py-[10px]" data-turn-index={item.index}>
+      <div className="chat-content">
+        <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
+          <div
+            className="mb-1.5 text-[11px] leading-none select-none"
+            title={item.turn.timestamp ? formatFullDateTime(item.turn.timestamp) : undefined}
           >
-            <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
-            <span className="min-w-0 truncate">{line}</span>
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="tool-pre mt-2 rounded-[6px] border px-3 py-2 text-muted-foreground">
-            <Markdown text={body} query={query} current={current} />
+            {["Agent", name, time].filter(Boolean).join(" · ")}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="tool-pill tier-hover flex w-full max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-[5px] text-left leading-snug cursor-pointer select-none"
+              title={line}
+            >
+              <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
+              <span className="min-w-0 truncate">{line}</span>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="tool-pre mt-2 rounded-[6px] border px-3 py-2 text-[13px] leading-[1.55]">
+              <Markdown text={body} query={query} current={current} />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
     </div>
   );
 });
@@ -76,24 +78,26 @@ export const SystemTurn = memo(function SystemTurn({ item, query, current, time 
   const body = bodyOf(item);
   const label = item.turn.label ?? "system";
   return (
-    <div className="chat-turn px-4 py-[10px]" data-turn-index={item.index}>
-      <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex max-w-full items-center gap-1.5 text-[11px] leading-none text-muted-foreground opacity-70 hover:opacity-100 cursor-pointer select-none"
-            title={item.turn.timestamp ? `System · ${label} · ${formatFullDateTime(item.turn.timestamp)}` : `System · ${label}`}
-          >
-            <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
-            <span className="min-w-0 truncate">{["System", label, time].filter(Boolean).join(" · ")}</span>
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <pre className="tool-pre mono-pre mt-2 max-h-[60vh] overflow-auto scroll-thin rounded-[6px] border p-2 text-muted-foreground">
-            <Highlight text={body} query={query} current={current} />
-          </pre>
-        </CollapsibleContent>
-      </Collapsible>
+    <div className="chat-turn py-[6px]" data-turn-index={item.index}>
+      <div className="chat-content">
+        <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="system-line tier-hover flex max-w-full items-center gap-1.5 leading-snug cursor-pointer select-none"
+              title={item.turn.timestamp ? `System · ${label} · ${formatFullDateTime(item.turn.timestamp)}` : `System · ${label}`}
+            >
+              <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
+              <span className="min-w-0 truncate">{["System", label, time].filter(Boolean).join(" · ")}</span>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="tool-pre mono-pre mt-2 max-h-[60vh] overflow-auto scroll-thin rounded-[6px] border p-2">
+              <Highlight text={body} query={query} current={current} />
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
     </div>
   );
 });

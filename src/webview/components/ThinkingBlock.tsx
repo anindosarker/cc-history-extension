@@ -27,11 +27,11 @@ export const ThinkingBlock = memo(function ThinkingBlock({ text, query, current,
   const tooLong = text.length > LIMIT;
   const showFull = !tooLong || expanded || hasMatch;
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible open={open} onOpenChange={setOpen} className="tier-2 min-w-0">
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="text-[12px] italic text-muted-foreground opacity-70 hover:opacity-100 cursor-pointer select-none"
+          className="thinking-line tier-hover italic leading-snug cursor-pointer select-none"
           aria-expanded={open}
         >
           Thinking…
@@ -39,7 +39,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ text, query, current,
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-1.5 text-[12px] leading-[1.55] text-muted-foreground whitespace-pre-wrap break-words italic">
+        <div className="mt-1.5 leading-[1.55] whitespace-pre-wrap break-words italic">
           <Highlight text={showFull ? text : text.slice(0, LIMIT)} query={query} current={current} />
         </div>
         {tooLong && !hasMatch && (
