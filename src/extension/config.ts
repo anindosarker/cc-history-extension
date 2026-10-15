@@ -2,6 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { normalizeOpenAt, type OpenAt } from "../shared/openAt";
+import { DEFAULT_HIDDEN_PROJECTS } from "./hideProjects";
 
 export function expandHome(p: string): string {
   if (p === "~") return os.homedir();
@@ -43,4 +44,15 @@ export function getExportOptions(): { includeToolResults: boolean; includeThinki
     includeToolResults: cfg.get<boolean>("includeToolResults") ?? false,
     includeThinking: cfg.get<boolean>("includeThinking") ?? false,
   };
+}
+
+export function getShowStatus(): boolean {
+  return vscode.workspace.getConfiguration("ccHistory.tree").get<boolean>("showStatus") ?? true;
+}
+
+/** Glob patterns for project folders hidden from the tree, the quick pick and the week summary. */
+export function getHideProjects(): string[] {
+  const raw = vscode.workspace.getConfiguration("ccHistory.tree").get<unknown>("hideProjects");
+  if (!Array.isArray(raw)) return [...DEFAULT_HIDDEN_PROJECTS];
+  return raw.filter((p): p is string => typeof p === "string");
 }

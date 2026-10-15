@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      picomatch:
+        specifier: 4.0.7
+        version: 4.0.7
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1

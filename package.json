@@ -2,27 +2,41 @@
   "name": "cc-history",
   "displayName": "Claude Code History",
   "description": "Browse, search, diff and export all of your Claude Code sessions. No time cutoff.",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "anindosarker",
   "license": "MIT",
-  "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/anindosarker/cc-history"
+    "url": "https://github.com/anindosarker/cc-history-extension"
   },
+  "bugs": {
+    "url": "https://github.com/anindosarker/cc-history-extension/issues"
+  },
+  "homepage": "https://github.com/anindosarker/cc-history-extension#readme",
   "engines": {
     "vscode": "^1.95.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "keywords": [
     "claude",
     "claude code",
     "history",
     "sessions",
-    "transcript"
+    "transcript",
+    "anthropic",
+    "transcript viewer",
+    "session history",
+    "usage"
   ],
+  "galleryBanner": {
+    "color": "#1f1f1f",
+    "theme": "dark"
+  },
+  "icon": "media/icon.png",
+  "qna": "marketplace",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -200,6 +214,22 @@
           "default": "",
           "description": "Folder with Claude Code live session files (<pid>.json), used for the running / open / ended status dots. Leave empty to use the sessions folder next to ccHistory.projectsDir."
         },
+        "ccHistory.tree.showStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show live status dots (running, open, recently ended) in the Sessions view. When off, the sessions folder is not watched or polled."
+        },
+        "ccHistory.tree.hideProjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/private/var/folders/**",
+            "/tmp/**"
+          ],
+          "description": "Glob patterns for project folders to hide from the Sessions view, Find Session and the usage panel's week summary. A project is hidden when its working directory matches any pattern."
+        },
         "ccHistory.claudeCommand": {
           "type": "string",
           "default": "claude",
@@ -363,5 +393,8 @@
       "esbuild",
       "@vscode/vsce-sign"
     ]
+  },
+  "dependencies": {
+    "picomatch": "4.0.7"
   }
 }

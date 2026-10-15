@@ -4,6 +4,7 @@
 src/**
 tests/**
 scripts/**
+media/screenshots/**
 node_modules/**
 graphify-out/**
 .gitignore

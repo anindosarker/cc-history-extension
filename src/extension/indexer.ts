@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
-import { getProjectsDir } from "./config";
+import { getHideProjects, getProjectsDir } from "./config";
+import { hiddenProjectMatcher } from "./hideProjects";
 import { groupByProject, listSessionFiles, scanProjects, type ProjectGroup } from "./indexScan";
 
 const CACHE_KEY = "ccHistory.index.v2";
@@ -16,18 +17,31 @@ export class Indexer implements vscode.Disposable {
   private debounce: NodeJS.Timeout | undefined;
   private scanning: Promise<void> | undefined;
   private rescanRequested = false;
+  private hidden = hiddenProjectMatcher(getHideProjects());
 
   constructor(private readonly context: vscode.ExtensionContext) {
     const cached = context.globalState.get<Record<string, SessionMeta>>(CACHE_KEY);
     if (cached) for (const [k, v] of Object.entries(cached)) this.byPath.set(k, v);
   }
 
+  /** Sessions whose project is not hidden by ccHistory.tree.hideProjects. */
   get sessions(): SessionMeta[] {
+    return [...this.byPath.values()].filter((s) => !this.hidden(s.cwd));
+  }
+
+  /** Every indexed session, hidden projects included. */
+  get allSessions(): SessionMeta[] {
     return [...this.byPath.values()];
   }
 
   get projects(): ProjectGroup[] {
     return groupByProject(this.sessions);
+  }
+
+  /** Re-read ccHistory.tree.hideProjects and tell listeners the visible set may have changed. */
+  reloadHiddenProjects(): void {
+    this.hidden = hiddenProjectMatcher(getHideProjects());
+    this.changeEmitter.fire();
   }
 
   findBySessionId(id: string): SessionMeta | undefined {

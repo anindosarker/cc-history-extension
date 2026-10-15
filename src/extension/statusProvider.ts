@@ -31,11 +31,41 @@ export class SessionStatusProvider implements vscode.FileDecorationProvider, vsc
   private debounce: NodeJS.Timeout | undefined;
   private refreshing = false;
   private again = false;
+  private enabled = true;
+  private visible = false;
 
   constructor(private readonly indexer: Indexer) {}
 
   statusOf(sessionId: string): LiveStatus | undefined {
     return this.statuses.get(sessionId);
+  }
+
+  /**
+   * Turn live status on or off (ccHistory.tree.showStatus). Off stops the poll and the
+   * watcher and clears every decoration; on restarts both for the current visibility.
+   */
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (enabled) {
+      this.startWatching();
+      this.setVisible(this.visible);
+      return;
+    }
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+    if (this.debounce) clearTimeout(this.debounce);
+    this.debounce = undefined;
+    this.stopWatching();
+    this.clearStatuses();
+  }
+
+  private clearStatuses(): void {
+    if (this.statuses.size === 0) return;
+    const cleared = [...this.statuses.keys()].map(statusUri);
+    this.statuses.clear();
+    this.decoEmitter.fire(cleared);
+    this.changeEmitter.fire();
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
@@ -49,15 +79,17 @@ export class SessionStatusProvider implements vscode.FileDecorationProvider, vsc
 
   /** Poll while the view is visible; stop when hidden. */
   setVisible(visible: boolean): void {
+    this.visible = visible;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
-    if (!visible) return;
+    if (!visible || !this.enabled) return;
     void this.refresh();
     this.timer = setInterval(() => void this.refresh(), POLL_MS);
   }
 
   startWatching(): void {
     this.stopWatching();
+    if (!this.enabled) return;
     const dir = getSessionsDir();
     if (!fs.existsSync(dir)) return;
     try {
@@ -77,6 +109,7 @@ export class SessionStatusProvider implements vscode.FileDecorationProvider, vsc
   }
 
   async refresh(): Promise<void> {
+    if (!this.enabled) return;
     if (this.refreshing) {
       this.again = true;
       return;

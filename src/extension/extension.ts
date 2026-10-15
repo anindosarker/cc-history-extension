@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { DIFF_SCHEME, DiffContentProvider } from "./diffProvider";
+import { getShowStatus } from "./config";
 import { exportSession } from "./exportHost";
+import { maybeShowFirstRunNotice } from "./firstRunHost";
 import { copyPath, revealFolder } from "./folder";
 import { Indexer } from "./indexer";
 import { activityOf } from "./indexScan";
@@ -17,6 +19,7 @@ import { UsagePoller } from "./usage/usagePoller";
 export function activate(context: vscode.ExtensionContext): void {
   const indexer = new Indexer(context);
   const status = new SessionStatusProvider(indexer);
+  status.setEnabled(getShowStatus());
   const tree = new SessionTreeProvider(indexer, status, context.extensionUri);
   const diffs = new DiffContentProvider();
   const panels = new SessionPanelManager(context, diffs);
@@ -97,10 +100,16 @@ export function activate(context: vscode.ExtensionContext): void {
         status.startWatching();
         void status.refresh();
       }
+      if (e.affectsConfiguration("ccHistory.tree.showStatus")) status.setEnabled(getShowStatus());
+      if (e.affectsConfiguration("ccHistory.tree.hideProjects")) {
+        indexer.reloadHiddenProjects();
+        tree.refresh();
+      }
     }),
   );
 
   usage.start();
+  void maybeShowFirstRunNotice(context);
   void indexer.refresh().then(() => {
     indexer.startWatching();
     status.startWatching();

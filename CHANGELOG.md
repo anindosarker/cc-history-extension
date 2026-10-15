@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Usage widget hardening: the last good reading stays on screen instead of "?" when a poll fails, credential reads are retried, and every poll outcome goes to a "Claude Code History" output channel (Show Usage Log).
+- New tree settings: `ccHistory.tree.showStatus` turns the live status dots and their watcher and poll off, and `ccHistory.tree.hideProjects` hides projects by glob from the tree, Find Session and the week summary. Both apply live. Temp folders are hidden by default.
+- One-time notice on first activation explaining that the usage widget reads the Claude Code login from the Keychain, with a button to turn it off.
+- Marketplace metadata: icon, gallery banner, categories, keywords, repository and issue links; screenshots and a Privacy section in the README.
+
 ## 0.3.2
 
 - Color accents: status dots and colored names on tool lines, +N -M counts with a mini diff for edits, yellow Bash summaries, blue agent names and mentions, fold counts by run status, yellow rule on usage-limit notices.
