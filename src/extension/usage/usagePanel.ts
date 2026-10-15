@@ -28,7 +28,10 @@ export class UsagePanelManager implements vscode.Disposable {
       retainContextWhenHidden: true,
       localResourceRoots: [webviewRoot],
     });
-    panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "icon.svg");
+    panel.iconPath = {
+      light: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon-light.svg"),
+      dark: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon-dark.svg"),
+    };
     panel.webview.html = webviewHtml(panel.webview, webviewRoot, "Usage", "usage");
     this.panel = panel;
     this.disposables.push(

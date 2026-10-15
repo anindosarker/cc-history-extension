@@ -79,7 +79,7 @@ class SessionPanel {
         enableFindWidget: false,
       },
     );
-    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "icon.svg");
+    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "session-claude.svg");
     this.panel.webview.html = webviewHtml(this.panel.webview, webviewRoot, meta.title, "session");
     this.disposables.push(
       this.panel.webview.onDidReceiveMessage((m: WebviewToHost) => void this.onMessage(m)),
