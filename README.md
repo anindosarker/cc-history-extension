@@ -2,37 +2,19 @@
 
 A read-only VS Code viewer for your Claude Code session logs. Every session, every project, no seven-day window. A status bar widget shows how much of your Claude Code rate limit is used.
 
-![A 27-second tour of the extension](media/intro.gif)
-
-[Watch the tour as an mp4](https://github.com/anindosarker/cc-history-extension/releases/download/v0.4.1/intro.mp4).
-
 ## Screenshots
-
-![Sessions view grouped by project with live status dots](media/screenshots/tree.png)
 
 The Sessions view: every project, every session, newest first, with running, open and recently ended dots.
 
-![A session open in the viewer with markdown, thinking blocks and tool calls](media/screenshots/viewer.png)
-
 The session viewer: virtualized messages, markdown, collapsible thinking and tool calls, clickable file paths.
-
-![In-session search with match count and filters](media/screenshots/search.png)
 
 Search inside a session with a match counter, next and previous, and role, thinking and tool filters.
 
-![Subagent transcripts in the Agents popover](media/screenshots/agents.png)
-
 Subagent transcripts: an Agents popover, per-agent views and links from Agent tool calls.
-
-![Files changed tab with per-hunk diffs](media/screenshots/files.png)
 
 Files changed in a session, with whole-file and per-hunk diffs in the native diff editor.
 
-![Usage panel with pace markers and the week summary](media/screenshots/usage.png)
-
 The usage panel: 5-hour, weekly and per-model limits with pace markers, projections and this week's sessions.
-
-![The viewer in a light theme](media/screenshots/light.png)
 
 Everything follows your theme, light or dark.
 
