@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.8
+
+- The usage status bar item sits next to the right edge, so a crowded status bar no longer wraps it out of view.
+
 ## 0.4.7
 
 - Pin hover actions share one upright pin shape: outline to pin, filled to unpin.

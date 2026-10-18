@@ -12,7 +12,8 @@ export class UsageStatusBar implements vscode.Disposable {
   private last: UsageState = { refreshing: false };
 
   constructor(private readonly poller: UsagePoller) {
-    this.item = vscode.window.createStatusBarItem("ccHistory.usage", vscode.StatusBarAlignment.Right, 100);
+    // Low priority keeps the item near the right edge, so a crowded status bar wraps other items out first.
+    this.item = vscode.window.createStatusBarItem("ccHistory.usage", vscode.StatusBarAlignment.Right, -1000);
     this.item.name = "Claude Code usage";
     this.item.command = "ccHistory.openUsage";
     this.disposables.push(this.item, poller.onDidChange((s) => this.render(s)));
