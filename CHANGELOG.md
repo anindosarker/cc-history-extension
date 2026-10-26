@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.9
+
+- Code blocks in messages that name a language are syntax highlighted, in Dark+, Light+ or high contrast colors to match the theme kind. Untagged blocks stay plain.
+- Inline code keeps its pill and takes the code variable color.
+
 ## 0.4.8
 
 - The usage status bar item sits next to the right edge, so a crowded status bar no longer wraps it out of view.

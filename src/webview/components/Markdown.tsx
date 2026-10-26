@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { parseFileRef } from "@shared/fileRef";
 import { useAgents } from "@/lib/agents";
 import { escapeRegExp } from "@/lib/search";
@@ -165,7 +166,13 @@ export const Markdown = memo(function Markdown({ text, query, current = -1 }: Pr
   const { agents } = useAgents();
   const names = useMemo(() => agents.map((a) => a.name).filter((n): n is string => !!n), [agents]);
   const plugins = useMemo(
-    () => [rehypeFileLinks, [rehypeMentions, { names }] as const, [rehypeMark, { query, current }] as const],
+    () => [
+      // Highlight first so search marks below wrap text inside the token spans. Untagged blocks stay plain.
+      [rehypeHighlight, { detect: false }] as const,
+      rehypeFileLinks,
+      [rehypeMentions, { names }] as const,
+      [rehypeMark, { query, current }] as const,
+    ],
     [names, query, current],
   );
   return (

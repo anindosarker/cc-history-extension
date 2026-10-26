@@ -197,6 +197,22 @@ describe("recap and notice turns", () => {
   });
 });
 
+describe("code highlighting", () => {
+  it("colors tagged fenced blocks and leaves untagged ones plain", () => {
+    const tagged = renderToString(<Markdown text={"```ts\nconst x: number = 1;\n```"} query="" />);
+    expect(tagged).toContain('class="hljs language-ts"');
+    expect(tagged).toMatch(/<span class="hljs-keyword">const<\/span>/);
+    const plain = renderToString(<Markdown text={"```\nconst x = 1;\n```"} query="" />);
+    expect(plain).not.toContain("hljs");
+    expect(plain).toMatch(/<pre><code>const x = 1;\n<\/code><\/pre>/);
+  });
+
+  it("still marks search hits inside highlighted tokens", () => {
+    const html = renderToString(<Markdown text={"```ts\nconst value = \"needle\";\n```"} query="needle" current={0} />);
+    expect(html).toMatch(/<span class="hljs-string">&quot;<mark data-current="true">needle<\/mark>&quot;<\/span>/);
+  });
+});
+
 describe("file links", () => {
   it("marks inline code paths as links in markdown, leaving URLs and fenced code alone", () => {
     const html = renderToString(
