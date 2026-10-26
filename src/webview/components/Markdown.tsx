@@ -162,13 +162,38 @@ export function openFileRef(ref: { path: string; line?: number; column?: number 
   post({ type: "revealFile", ...ref });
 }
 
+const DETECT_LANGUAGES = [
+  "typescript",
+  "javascript",
+  "python",
+  "bash",
+  "shell",
+  "json",
+  "yaml",
+  "go",
+  "rust",
+  "java",
+  "c",
+  "cpp",
+  "csharp",
+  "ruby",
+  "php",
+  "sql",
+  "diff",
+  "xml",
+  "kotlin",
+  "swift",
+];
+
 export const Markdown = memo(function Markdown({ text, query, current = -1 }: Props) {
   const { agents } = useAgents();
   const names = useMemo(() => agents.map((a) => a.name).filter((n): n is string => !!n), [agents]);
   const plugins = useMemo(
     () => [
-      // Highlight first so search marks below wrap text inside the token spans. Untagged blocks stay plain.
-      [rehypeHighlight, { detect: false }] as const,
+      // Highlight first so search marks below wrap text inside the token spans. Untagged blocks get their
+      // language guessed, as the Claude Code terminal does, from a narrow set: the full common set
+      // misreads short snippets as css, ini or makefile.
+      [rehypeHighlight, { detect: true, subset: DETECT_LANGUAGES }] as const,
       rehypeFileLinks,
       [rehypeMentions, { names }] as const,
       [rehypeMark, { query, current }] as const,

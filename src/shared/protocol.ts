@@ -1,4 +1,5 @@
 import type { OpenAt } from "./openAt";
+import type { ThemeTokenColors } from "./themeTokens";
 import type { FileChange, SessionMeta, SubagentInfo, Turn } from "./types";
 
 /** Messages the webview sends to the extension host. */
@@ -54,4 +55,6 @@ export type HostToWebview =
   | { type: "agentTurns"; agentId: string; turns: Turn[]; offset: number; done: boolean }
   | { type: "agentError"; agentId: string; message: string }
   /** Merged file changes, main plus subagents. */
-  | { type: "files"; files: FileChange[] };
+  | { type: "files"; files: FileChange[] }
+  /** Syntax colors of the active VS Code theme; an empty map means the webview's fallback palette. */
+  | { type: "themeTokens"; colors: ThemeTokenColors };

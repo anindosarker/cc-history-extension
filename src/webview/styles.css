@@ -381,7 +381,7 @@
 .md code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  color: var(--tok-variable);
+  color: var(--tok-variable, var(--tok-variable-default));
   background: var(--inline-code-bg);
   padding: 0.05em 0.3em;
   border-radius: 3px;
@@ -412,74 +412,79 @@
   font-size: 13px;
   white-space: pre;
 }
-/* Syntax token colors for highlighted code blocks: Dark+ by default, Light+ and high contrast per theme kind. */
+/*
+ * Fallback syntax token colors: Dark+ by default, Light+ and high contrast per theme kind. The host sets
+ * --tok-<name> on the root from the active color theme; each use below prefers that over the fallback.
+ */
 .md,
 body.vscode-dark .md {
-  --tok-keyword: #569cd6;
-  --tok-string: #ce9178;
-  --tok-number: #b5cea8;
-  --tok-comment: #6a9955;
-  --tok-function: #dcdcaa;
-  --tok-type: #4ec9b0;
-  --tok-variable: #9cdcfe;
-  --tok-regexp: #d16969;
+  --tok-keyword-default: #569cd6;
+  --tok-string-default: #ce9178;
+  --tok-number-default: #b5cea8;
+  --tok-comment-default: #6a9955;
+  --tok-function-default: #dcdcaa;
+  --tok-type-default: #4ec9b0;
+  --tok-variable-default: #9cdcfe;
+  --tok-regexp-default: #d16969;
 }
 body.vscode-light .md {
-  --tok-keyword: #0000ff;
-  --tok-string: #a31515;
-  --tok-number: #098658;
-  --tok-comment: #008000;
-  --tok-function: #795e26;
-  --tok-type: #267f99;
-  --tok-variable: #001080;
-  --tok-regexp: #811f3f;
+  --tok-keyword-default: #0000ff;
+  --tok-string-default: #a31515;
+  --tok-number-default: #098658;
+  --tok-comment-default: #008000;
+  --tok-function-default: #795e26;
+  --tok-type-default: #267f99;
+  --tok-variable-default: #001080;
+  --tok-regexp-default: #811f3f;
 }
 body.vscode-high-contrast .md {
-  --tok-keyword: #569cd6;
-  --tok-string: #ce9178;
-  --tok-number: #b5cea8;
-  --tok-comment: #7ca668;
-  --tok-function: #dcdcaa;
-  --tok-type: #4ec9b0;
-  --tok-variable: #9cdcfe;
-  --tok-regexp: #d16969;
+  --tok-keyword-default: #569cd6;
+  --tok-string-default: #ce9178;
+  --tok-number-default: #b5cea8;
+  --tok-comment-default: #7ca668;
+  --tok-function-default: #dcdcaa;
+  --tok-type-default: #4ec9b0;
+  --tok-variable-default: #9cdcfe;
+  --tok-regexp-default: #d16969;
 }
 body.vscode-high-contrast-light .md {
-  --tok-keyword: #0f4a85;
-  --tok-string: #0f4a85;
-  --tok-number: #096d48;
-  --tok-comment: #515151;
-  --tok-function: #5e2cbc;
-  --tok-type: #185e73;
-  --tok-variable: #001080;
-  --tok-regexp: #811f3f;
+  --tok-keyword-default: #0f4a85;
+  --tok-string-default: #0f4a85;
+  --tok-number-default: #096d48;
+  --tok-comment-default: #515151;
+  --tok-function-default: #5e2cbc;
+  --tok-type-default: #185e73;
+  --tok-variable-default: #001080;
+  --tok-regexp-default: #811f3f;
 }
 .md pre code .hljs-keyword,
-.md pre code .hljs-literal,
 .md pre code .hljs-meta,
 .md pre code .hljs-tag,
 .md pre code .hljs-name,
 .md pre code .hljs-variable.language_ {
-  color: var(--tok-keyword);
+  color: var(--tok-keyword, var(--tok-keyword-default));
+}
+.md pre code .hljs-literal {
+  color: var(--tok-literal, var(--tok-keyword, var(--tok-keyword-default)));
 }
 .md pre code .hljs-string {
-  color: var(--tok-string);
+  color: var(--tok-string, var(--tok-string-default));
 }
 .md pre code .hljs-number {
-  color: var(--tok-number);
+  color: var(--tok-number, var(--tok-number-default));
 }
 .md pre code .hljs-comment {
-  color: var(--tok-comment);
+  color: var(--tok-comment, var(--tok-comment-default));
 }
 .md pre code .hljs-title,
 .md pre code .hljs-title.function_ {
-  color: var(--tok-function);
+  color: var(--tok-function, var(--tok-function-default));
 }
 .md pre code .hljs-type,
 .md pre code .hljs-title.class_,
 .md pre code .hljs-class,
 .md pre code .hljs-built_in {
-  color: var(--tok-type);
+  color: var(--tok-type, var(--tok-type-default));
 }
 .md pre code .hljs-variable,
 .md pre code .hljs-property,
@@ -487,10 +492,10 @@ body.vscode-high-contrast-light .md {
 .md pre code .hljs-attribute,
 .md pre code .hljs-params,
 .md pre code .hljs-symbol {
-  color: var(--tok-variable);
+  color: var(--tok-variable, var(--tok-variable-default));
 }
 .md pre code .hljs-regexp {
-  color: var(--tok-regexp);
+  color: var(--tok-regexp, var(--tok-regexp-default));
 }
 .md pre code .hljs-deletion {
   color: var(--diff-removed);

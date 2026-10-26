@@ -23,6 +23,7 @@ import { AgentRowLabel, StatusIcon, agentsSummary } from "@/components/AgentsBut
 import { ToolUseBlock } from "@/components/ToolUseBlock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
+import { applyThemeTokens } from "@/lib/themeTokens";
 import type { Block, FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types";
 
 const turns: Turn[] = [
@@ -198,18 +199,46 @@ describe("recap and notice turns", () => {
 });
 
 describe("code highlighting", () => {
-  it("colors tagged fenced blocks and leaves untagged ones plain", () => {
+  it("colors tagged fenced blocks and guesses the language of untagged ones", () => {
     const tagged = renderToString(<Markdown text={"```ts\nconst x: number = 1;\n```"} query="" />);
     expect(tagged).toContain('class="hljs language-ts"');
     expect(tagged).toMatch(/<span class="hljs-keyword">const<\/span>/);
-    const plain = renderToString(<Markdown text={"```\nconst x = 1;\n```"} query="" />);
-    expect(plain).not.toContain("hljs");
-    expect(plain).toMatch(/<pre><code>const x = 1;\n<\/code><\/pre>/);
+    const untagged = renderToString(
+      <Markdown text={"```\nfunction find(list) {\n  return list.indexOf(\"x\");\n}\n```"} query="" />,
+    );
+    expect(untagged).toContain('<code class="hljs language-javascript">');
+    expect(untagged).toMatch(/<span class="hljs-keyword">return<\/span>/);
+    // Inline code is never highlighted.
+    expect(renderToString(<Markdown text="Run `const x = 1`" query="" />)).toContain("<code>const x = 1</code>");
   });
 
   it("still marks search hits inside highlighted tokens", () => {
     const html = renderToString(<Markdown text={"```ts\nconst value = \"needle\";\n```"} query="needle" current={0} />);
     expect(html).toMatch(/<span class="hljs-string">&quot;<mark data-current="true">needle<\/mark>&quot;<\/span>/);
+  });
+
+  it("still marks search hits in untagged blocks after detection", () => {
+    const text = "```\nfunction find(list) {\n  return list.indexOf(\"needle\");\n}\n```";
+    const html = renderToString(<Markdown text={text} query="needle" current={0} />);
+    expect(html).toMatch(/<code class="hljs language-[\w-]+">/);
+    expect(html).toContain('<mark data-current="true">needle</mark>');
+  });
+
+  it("sets theme token vars from the host and clears the ones it no longer sends", () => {
+    const vars = new Map<string, string>();
+    const style = {
+      setProperty: (k: string, v: string | null) => void vars.set(k, v ?? ""),
+      removeProperty: (k: string) => {
+        vars.delete(k);
+        return "";
+      },
+    };
+    applyThemeTokens(style, { keyword: "#ff0000", string: "#00ff00" });
+    expect(Object.fromEntries(vars)).toEqual({ "--tok-keyword": "#ff0000", "--tok-string": "#00ff00" });
+    applyThemeTokens(style, { comment: "#888888" });
+    expect(Object.fromEntries(vars)).toEqual({ "--tok-comment": "#888888" });
+    applyThemeTokens(style, {});
+    expect(vars.size).toBe(0);
   });
 });
 
@@ -229,7 +258,8 @@ describe("file links", () => {
     expect(html).toMatch(/<code>npm run x<\/code>/);
     expect(html).toMatch(/<code>a\/b<\/code>/);
     expect(html).toMatch(/<code>0.1.0<\/code>/);
-    expect(html).toMatch(/<pre><code>src\/fenced.ts\n<\/code><\/pre>/);
+    // Fenced code may get a guessed language class but never a file link.
+    expect(html).toMatch(/<pre><code[^>]*>src\/fenced.ts\n<\/code><\/pre>/);
     // Search marks still land inside a linked span.
     const marked = renderToString(<Markdown text="Open `src/parser.ts:12`" query="parser" current={0} />);
     expect(marked).toMatch(/data-file-path="src\/parser.ts"[^>]*>src\/<mark data-current="true">parser<\/mark>.ts:12<\/code>/);

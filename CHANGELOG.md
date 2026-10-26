@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.10
+
+- Code colors follow the active VS Code color theme, including `editor.tokenColorCustomizations`, and update when the theme changes. The Dark+ and Light+ palette stays as the fallback.
+- Code blocks without a language tag get their language guessed from common languages, as the Claude Code terminal does.
+
 ## 0.4.9
 
 - Code blocks in messages that name a language are syntax highlighted, in Dark+, Light+ or high contrast colors to match the theme kind. Untagged blocks stay plain.

@@ -16,6 +16,7 @@ import { parseSessionFile, SessionBuilder, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
 import { listSubagents, mergedFileChanges, subagentsDir } from "./subagents";
 import { TailReader } from "./tail";
+import { ThemeTokens } from "./themeTokens";
 import { webviewHtml } from "./webviewHtml";
 
 const CHUNK_THRESHOLD = 5000;
@@ -47,6 +48,7 @@ function metaFrom(meta: SessionMeta, parsed: ParsedSession): SessionMeta {
 /** One webview panel per session; re-opening reveals the existing panel. */
 export class SessionPanelManager implements vscode.Disposable {
   private readonly panels = new Map<string, SessionPanel>();
+  private readonly themeTokens = new ThemeTokens();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -60,13 +62,16 @@ export class SessionPanelManager implements vscode.Disposable {
       existing.reveal();
       return;
     }
-    const panel = new SessionPanel(this.context, this.diffs, this.indexer, meta, () => this.panels.delete(meta.sessionId));
+    const panel = new SessionPanel(this.context, this.diffs, this.indexer, this.themeTokens, meta, () =>
+      this.panels.delete(meta.sessionId),
+    );
     this.panels.set(meta.sessionId, panel);
   }
 
   dispose(): void {
     for (const p of this.panels.values()) p.dispose();
     this.panels.clear();
+    this.themeTokens.dispose();
   }
 }
 
@@ -101,6 +106,7 @@ class SessionPanel {
     context: vscode.ExtensionContext,
     private readonly diffs: DiffContentProvider,
     indexer: Indexer,
+    private readonly themeTokens: ThemeTokens,
     private meta: SessionMeta,
     private readonly onClosed: () => void,
   ) {
@@ -123,6 +129,7 @@ class SessionPanel {
       this.panel.onDidDispose(() => this.dispose()),
       this.panel.onDidChangeViewState(() => this.setLivePolling(this.panel.visible)),
       indexer.onDidChangeFile((p) => this.onFileEvent(p)),
+      themeTokens.onDidChange((colors) => this.post({ type: "themeTokens", colors })),
     );
     this.setLivePolling(this.panel.visible);
   }
@@ -147,6 +154,9 @@ class SessionPanel {
   private async onMessage(msg: WebviewToHost): Promise<void> {
     switch (msg.type) {
       case "ready":
+        void this.themeTokens.current().then((colors) => this.post({ type: "themeTokens", colors }));
+        await this.load(false);
+        return;
       case "loadSession":
         await this.load(false);
         return;

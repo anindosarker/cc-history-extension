@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentsContext } from "@/lib/agents";
 import type { Appended } from "@/lib/live";
+import { applyThemeTokens } from "@/lib/themeTokens";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/vscode";
 import { AgentView, type AgentLoad } from "./components/AgentView";
@@ -192,6 +193,9 @@ export function App() {
         case "files":
           setFilesScope("merged");
           setState((s) => (s.status === "loaded" ? { ...s, files: msg.files } : s));
+          break;
+        case "themeTokens":
+          applyThemeTokens(document.documentElement.style, msg.colors);
           break;
       }
     };
