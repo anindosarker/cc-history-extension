@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.11
+
+- Fix: 0.4.10 failed to activate (`Cannot find module './impl/format'`), leaving the sessions view empty. The build now fails if the bundled extension cannot load on its own.
+
 ## 0.4.10
 
 - Code colors follow the active VS Code color theme, including `editor.tokenColorCustomizations`, and update when the theme changes. The Dark+ and Light+ palette stays as the fallback.
