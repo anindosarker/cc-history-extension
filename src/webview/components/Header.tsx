@@ -16,7 +16,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { OpenAt } from "@shared/openAt";
-import type { SessionMeta, SubagentInfo } from "@shared/types";
+import type { SessionMeta, SubagentInfo, WorkflowRun } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -44,8 +44,12 @@ interface Props {
   turnCount: number;
   openAt: OpenAt;
   onOpenAtChange: (value: OpenAt) => void;
+  /** Direct subagents; workflow agents come inside `workflows`. */
   agents?: SubagentInfo[];
+  workflows?: WorkflowRun[];
   onOpenAgent?: (agentId: string) => void;
+  /** Bumped to reopen the agents menu where it was left. */
+  agentsMenuReopen?: number;
   tab: HeaderTab;
   onTabChange: (tab: HeaderTab) => void;
   filesCount: number;
@@ -158,7 +162,9 @@ export function Header({
   openAt,
   onOpenAtChange,
   agents = [],
+  workflows = [],
   onOpenAgent,
+  agentsMenuReopen,
   tab,
   onTabChange,
   filesCount,
@@ -235,7 +241,7 @@ export function Header({
             ))}
           </TooltipContent>
         </Tooltip>
-        <AgentsButton agents={agents} onOpen={(id) => onOpenAgent?.(id)} compact />
+        <AgentsButton agents={agents} workflows={workflows} onOpen={(id) => onOpenAgent?.(id)} compact reopen={agentsMenuReopen} />
         <ContextMenu>
           <Tooltip>
             <TooltipTrigger asChild>

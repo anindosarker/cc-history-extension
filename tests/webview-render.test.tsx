@@ -19,12 +19,22 @@ import { displayToolName } from "@shared/toolSummary";
 import { editCounts, editLines } from "@shared/editStats";
 import { runStatus, toolStatus } from "@/lib/toolStatus";
 import { AgentsContext } from "@/lib/agents";
-import { AgentRowLabel, StatusIcon, agentsSummary } from "@/components/AgentsButton";
+import {
+  AgentRowLabel,
+  AgentsMenu,
+  StatusIcon,
+  agentTotal,
+  agentsSummary,
+  phaseGroups,
+  runIconStatus,
+  runRowDetail,
+  runSummaryLine,
+} from "@/components/AgentsButton";
 import { ToolUseBlock } from "@/components/ToolUseBlock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyFilters, buildRows, findMatches, formatWorkDuration } from "@/lib/search";
 import { applyThemeTokens } from "@/lib/themeTokens";
-import type { Block, FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types";
+import type { Block, FileChange, SessionMeta, SubagentInfo, Turn, WorkflowRun } from "@shared/types";
 
 const turns: Turn[] = [
   {
@@ -1029,5 +1039,97 @@ describe("agent rows, status icons and the live header", () => {
     expect(on).toMatch(/live-indicator[^>]*>.*agent-pulse.*Live<\/span>/s);
     expect(on).toMatch(/aria-label="Reload transcript"[^>]*>.*aria-label="Resume"/s);
     expect(render(false)).not.toContain("live-indicator");
+  });
+});
+
+describe("agents menu with workflow runs", () => {
+  const base = { filePath: "", size: 0 } as const;
+  const direct: SubagentInfo[] = [
+    { ...base, agentId: "d1", name: "reviewer", description: "Review the diff", status: "done" },
+    { ...base, agentId: "d2", name: "theme-builder", description: "Build the theme", status: "running" },
+  ];
+  const wf = (agentId: string, description: string, phase: string | undefined, status: SubagentInfo["status"] = "done"): SubagentInfo => ({
+    ...base,
+    agentId,
+    description,
+    agentType: "workflow-subagent",
+    status,
+    runId: "wf_1",
+    ...(phase ? { phase } : {}),
+  });
+  const done: WorkflowRun = {
+    runId: "wf_1",
+    name: "part-07",
+    summary: "coder, reviewer, gate",
+    status: "completed",
+    startedAt: 2,
+    durationMs: 54 * 60_000,
+    totalTokens: 466_478,
+    totalToolCalls: 103,
+    phases: ["Code", "Review", "Gate"],
+    agents: [wf("w1", "code:07", "Code"), wf("w2", "review:07", "Review", "failed"), wf("w3", "gate:07", "Gate"), wf("w4", "stray", undefined)],
+  };
+  const live: WorkflowRun = { runId: "wf_2", name: "part-06", status: "running", startedAt: 3, phases: ["Code"], agents: [wf("w5", "code:06", "Code", "running")] };
+  const noop = () => {};
+
+  it("counts every agent and describes runs by status, duration, tokens and tool calls", () => {
+    expect(agentTotal(direct, [done, live])).toBe(7);
+    expect(runRowDetail(done)).toBe("completed · 54m · 4 agents");
+    expect(runRowDetail(live)).toBe("running · 1 agent");
+    expect(runSummaryLine(done)).toBe("completed · 54m · 466.5k tokens · 103 tool calls");
+    expect(runIconStatus("completed")).toBe("done");
+    expect(runIconStatus("killed")).toBe("failed");
+    expect(runIconStatus("running")).toBe("running");
+    expect(runIconStatus("unknown")).toBe("unknown");
+  });
+
+  it("lists Workflows and Direct agents sections at the top level", () => {
+    const html = renderToString(<AgentsMenu agents={direct} workflows={[live, done]} level={{ kind: "root" }} onLevel={noop} onOpen={noop} />);
+    expect(html).toContain(">Workflows<");
+    expect(html).toContain(">Direct agents<");
+    expect(html.indexOf(">part-06<")).toBeLessThan(html.indexOf(">part-07<"));
+    expect(html).toContain(">completed · 54m · 4 agents<");
+    expect(html).toContain(">running · 1 agent<");
+    expect(html).toContain(">Agents (2) · 1 done · 1 running<");
+    expect(html).not.toContain("agent-row");
+  });
+
+  it("hides the Direct agents section when there are none", () => {
+    const html = renderToString(<AgentsMenu agents={[]} workflows={[done]} level={{ kind: "root" }} onLevel={noop} onOpen={noop} />);
+    expect(html).toContain(">Workflows<");
+    expect(html).not.toContain(">Direct agents<");
+  });
+
+  it("groups a run's agents under its phase titles in phase order, unphased last", () => {
+    expect(phaseGroups(done).map((g) => [g.title, g.agents.map((a) => a.description)])).toEqual([
+      ["Code", ["code:07"]],
+      ["Review", ["review:07"]],
+      ["Gate", ["gate:07"]],
+      ["Other", ["stray"]],
+    ]);
+    const html = renderToString(<AgentsMenu agents={direct} workflows={[done]} level={{ kind: "run", runId: "wf_1" }} onLevel={noop} onOpen={noop} />);
+    expect(html).toContain("agents-back");
+    expect(html).toContain(">part-07<");
+    expect(html).toContain(">completed · 54m · 466.5k tokens · 103 tool calls<");
+    const order = ["Code", "code:07", "Review", "review:07", "Gate", "gate:07", "Other", "stray"].map((t) => html.indexOf(`>${t}<`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).not.toContain(">reviewer<");
+  });
+
+  it("shows the direct agents list behind a back control", () => {
+    const html = renderToString(<AgentsMenu agents={direct} workflows={[done]} level={{ kind: "direct" }} onLevel={noop} onOpen={noop} />);
+    expect(html).toContain("agents-back");
+    expect(html).toContain(">reviewer<");
+    expect(html).toContain(">theme-builder<");
+    expect(html).not.toContain(">code:07<");
+  });
+
+  it("opens straight to the direct agents list when the session has no workflow runs", () => {
+    const html = renderToString(<AgentsMenu agents={direct} workflows={[]} level={{ kind: "root" }} onLevel={noop} onOpen={noop} />);
+    expect(html).not.toContain("agents-back");
+    expect(html).not.toContain(">Workflows<");
+    expect(html).toContain(">Agents (2) · 1 done · 1 running<");
+    expect(html).toContain(">reviewer<");
   });
 });

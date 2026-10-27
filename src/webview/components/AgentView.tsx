@@ -23,12 +23,16 @@ interface Props {
   active: boolean;
   openAt: OpenAt;
   jumpKey: number;
+  /** Tooltip of the back control; defaults to going back to the session transcript. */
+  backLabel?: string;
   onBack: () => void;
+  /** The close control and Esc; defaults to `onBack`. */
+  onClose?: () => void;
   onStep: (delta: number) => void;
 }
 
 /** A subagent transcript in place of the main messages area, with its own search and filters. */
-export function AgentView({ agent, position, count, load, active, openAt, jumpKey, onBack, onStep }: Props) {
+export function AgentView({ agent, position, count, load, active, openAt, jumpKey, backLabel, onBack, onClose, onStep }: Props) {
   const duration =
     agent.startedAt && agent.endedAt && agent.endedAt > agent.startedAt
       ? formatDuration(agent.endedAt - agent.startedAt)
@@ -38,7 +42,7 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
     <div className="flex flex-col h-full min-h-0">
       <div className="px-3 pt-1.5 pb-1 border-b border-border shrink-0 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <IconButton label="Back to the session transcript" onClick={onBack}>
+          <IconButton label={backLabel ?? "Back to the session transcript"} onClick={onBack}>
             <ArrowLeft />
           </IconButton>
           <Bot className="size-3.5 shrink-0 text-muted-foreground" />
@@ -64,7 +68,7 @@ export function AgentView({ agent, position, count, load, active, openAt, jumpKe
           >
             <Clipboard />
           </IconButton>
-          <IconButton label="Close agent view (Esc)" onClick={onBack}>
+          <IconButton label="Close agent view (Esc)" onClick={onClose ?? onBack}>
             <X />
           </IconButton>
         </div>

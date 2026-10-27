@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- The Agents button shows workflow runs. Each run lists its name, status, duration and agent count, and opens to its agents grouped by phase, with tokens and tool calls. Regular subagents sit in their own Direct agents group. Any agent opens its transcript, and Back returns to the list it came from.
+- Sessions without workflows open straight to the subagent list, as before.
+- Live sessions show running workflows and their agents as they start.
+
 ## 0.4.11
 
 - Fix: 0.4.10 failed to activate (`Cannot find module './impl/format'`), leaving the sessions view empty. The build now fails if the bundled extension cannot load on its own.

@@ -90,6 +90,30 @@ export interface SubagentInfo {
   startedAt?: number;
   endedAt?: number;
   status: SubagentStatus;
+  /** Workflow agents: the run that spawned it and its phase title, when the meta.json records one. */
+  runId?: string;
+  phase?: string;
+}
+
+/**
+ * One workflow run of a session, from workflows/<runId>.json when the run has ended, else from its
+ * journal. "running" while the parent is alive and no run file says otherwise; "unknown" for a
+ * run that never wrote one. Other values ("completed", "killed", "failed") come from the run file.
+ */
+export interface WorkflowRun {
+  runId: string;
+  /** The workflow name, or the run id while the run file is missing. */
+  name: string;
+  summary?: string;
+  status: string;
+  startedAt?: number;
+  durationMs?: number;
+  /** Phase titles in the run's own order. */
+  phases: string[];
+  totalTokens?: number;
+  totalToolCalls?: number;
+  /** Agents grouped by phase in `phases` order, unphased last; journal start order within a phase. */
+  agents: SubagentInfo[];
 }
 
 export interface FileHunk {

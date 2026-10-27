@@ -23,6 +23,8 @@ export interface SubagentMeta {
   model?: string;
   color?: string;
   toolUseId?: string;
+  /** Workflow agents: the phase title of the run that spawned it. */
+  workflowPhase?: string;
 }
 
 /** `<projectDir>/<sessionId>/subagents`, next to the session's own jsonl. */
@@ -150,7 +152,7 @@ export interface ListOptions {
 /**
  * Subagent transcripts of a session in spawn order (the main transcript's `Agent` calls), by start
  * time when no call matches. Reads meta.json, a stat and the two ends of each transcript; nothing
- * is parsed until an agent is opened.
+ * is parsed until an agent is opened. Workflow agents live one folder deeper and are not listed here.
  */
 export async function listSubagents(meta: SessionMeta, opts: ListOptions): Promise<SubagentInfo[]> {
   const dir = subagentsDir(meta);
@@ -164,49 +166,69 @@ export async function listSubagents(meta: SessionMeta, opts: ListOptions): Promi
   const failedNames = failedAgentNames(opts.mainTurns ?? []);
   const out: SubagentInfo[] = [];
   for (const file of names) {
-    if (!file.endsWith(".jsonl")) continue;
-    const filePath = path.join(dir, file);
-    let stat: fs.Stats;
-    try {
-      stat = await fs.promises.stat(filePath);
-    } catch {
-      continue;
-    }
-    if (!stat.isFile()) continue;
-    const m = readMeta(path.join(dir, file.slice(0, -".jsonl".length) + ".meta.json")) ?? {};
-    let edges: TranscriptEdges = {};
-    try {
-      edges = await readTranscriptEdges(filePath, stat.size);
-    } catch {
-      /* unreadable transcript, list it anyway */
-    }
-    const agentId = agentIdFromFileName(file);
-    const name = str(m.name) ?? nameFromFileName(file);
-    const agentType = str(m.agentType);
-    const description = str(m.description) ?? (edges.firstPrompt ? clip(edges.firstPrompt) : (name ?? agentType ?? agentId));
-    const endedAt = edges.endedAt ?? stat.mtimeMs;
-    const failed = (name !== undefined && failedNames.has(name)) || edges.lastStopReason === "error";
-    const info: SubagentInfo = {
-      agentId,
-      description,
-      filePath,
-      size: stat.size,
-      endedAt,
-      status: computeAgentStatus({ endedAt, now, parentAlive: opts.parentAlive, failed }),
-    };
-    if (name) info.name = name;
-    if (agentType) info.agentType = agentType;
-    if (edges.startedAt !== undefined) info.startedAt = edges.startedAt;
-    if (str(m.model)) info.model = m.model;
-    if (str(m.color)) info.color = m.color;
-    if (str(m.toolUseId)) info.toolUseId = m.toolUseId;
-    out.push(info);
+    const info = await readAgentFile(dir, file, { now, parentAlive: opts.parentAlive, failedNames });
+    if (info) out.push(info);
   }
   out.sort((a, b) => (a.startedAt ?? a.endedAt ?? 0) - (b.startedAt ?? b.endedAt ?? 0) || agentTag(a).localeCompare(agentTag(b)));
   return orderAgents(out, spawnOrder(opts.mainTurns ?? []));
 }
 
-function str(v: unknown): string | undefined {
+export interface AgentFileContext {
+  now: number;
+  /** Whether the agent can still be writing: the parent is alive (and, for workflow agents, the run is). */
+  parentAlive: boolean;
+  /** Names the main transcript reported as failed. */
+  failedNames?: ReadonlySet<string>;
+  /** Agent ids known to have failed by other means, like a workflow journal. */
+  failedIds?: ReadonlySet<string>;
+}
+
+/** One agent-<id>.jsonl in `dir` with its meta.json; undefined for other files and unreadable entries. */
+export async function readAgentFile(dir: string, file: string, ctx: AgentFileContext): Promise<SubagentInfo | undefined> {
+  if (!file.endsWith(".jsonl")) return undefined;
+  const filePath = path.join(dir, file);
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch {
+    return undefined;
+  }
+  if (!stat.isFile()) return undefined;
+  const m = readMeta(path.join(dir, file.slice(0, -".jsonl".length) + ".meta.json")) ?? {};
+  let edges: TranscriptEdges = {};
+  try {
+    edges = await readTranscriptEdges(filePath, stat.size);
+  } catch {
+    /* unreadable transcript, list it anyway */
+  }
+  const agentId = agentIdFromFileName(file);
+  const name = str(m.name) ?? nameFromFileName(file);
+  const agentType = str(m.agentType);
+  const description = str(m.description) ?? (edges.firstPrompt ? clip(edges.firstPrompt) : (name ?? agentType ?? agentId));
+  const endedAt = edges.endedAt ?? stat.mtimeMs;
+  const failed =
+    (name !== undefined && ctx.failedNames?.has(name) === true) ||
+    ctx.failedIds?.has(agentId) === true ||
+    edges.lastStopReason === "error";
+  const info: SubagentInfo = {
+    agentId,
+    description,
+    filePath,
+    size: stat.size,
+    endedAt,
+    status: computeAgentStatus({ endedAt, now: ctx.now, parentAlive: ctx.parentAlive, failed }),
+  };
+  if (name) info.name = name;
+  if (agentType) info.agentType = agentType;
+  if (edges.startedAt !== undefined) info.startedAt = edges.startedAt;
+  if (str(m.model)) info.model = m.model;
+  if (str(m.color)) info.color = m.color;
+  if (str(m.toolUseId)) info.toolUseId = m.toolUseId;
+  if (str(m.workflowPhase)) info.phase = m.workflowPhase;
+  return info;
+}
+
+export function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v : undefined;
 }
 

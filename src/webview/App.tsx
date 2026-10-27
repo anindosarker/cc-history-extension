@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_OPEN_AT, type OpenAt } from "@shared/openAt";
 import type { HostToWebview } from "@shared/protocol";
-import type { FileChange, SessionMeta, SubagentInfo, Turn } from "@shared/types";
+import type { FileChange, SessionMeta, SubagentInfo, Turn, WorkflowRun } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentsContext } from "@/lib/agents";
@@ -52,7 +52,11 @@ export function App() {
   // Bumped on each user toggle so the list jumps right away, before the host acks.
   const [jumpKey, setJumpKey] = useState(0);
   const [agents, setAgents] = useState<SubagentInfo[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
   const [agentView, setAgentView] = useState<string | undefined>(undefined);
+  // The open agent came from the agents menu, so its back control reopens that menu.
+  const [fromMenu, setFromMenu] = useState(false);
+  const [menuReopen, setMenuReopen] = useState(0);
   const [agentLoads, setAgentLoads] = useState<Record<string, AgentLoad>>({});
   const [filesScope, setFilesScope] = useState<FilesScope>("main");
   const [live, setLive] = useState(false);
@@ -114,6 +118,7 @@ export function App() {
           }
           reload.current = undefined;
           setAgents([]);
+          setWorkflows([]);
           setAgentView(undefined);
           setAgentLoads({});
           setFilesScope("main");
@@ -155,6 +160,7 @@ export function App() {
           break;
         case "agents":
           setAgents(msg.list);
+          setWorkflows(msg.workflows);
           break;
         case "agentStart":
           setAgentLoads((m) => ({
@@ -212,7 +218,7 @@ export function App() {
 
   const reloadSession = useCallback(() => post({ type: "reloadSession" }), []);
 
-  const openAgent = useCallback((agentId: string) => {
+  const showAgent = useCallback((agentId: string) => {
     setTab("messages");
     setAgentView(agentId);
     setAgentLoads((m) => {
@@ -222,7 +228,29 @@ export function App() {
     });
   }, []);
 
+  // A spawn link in the transcript; back returns to the transcript.
+  const openAgent = useCallback(
+    (agentId: string) => {
+      setFromMenu(false);
+      showAgent(agentId);
+    },
+    [showAgent],
+  );
+
+  const openAgentFromMenu = useCallback(
+    (agentId: string) => {
+      setFromMenu(true);
+      showAgent(agentId);
+    },
+    [showAgent],
+  );
+
   const closeAgent = useCallback(() => setAgentView(undefined), []);
+
+  const backFromAgent = useCallback(() => {
+    setAgentView(undefined);
+    if (fromMenu) setMenuReopen((n) => n + 1);
+  }, [fromMenu]);
 
   // Esc leaves the agent view unless something closer to the key (search box, menus) already used it.
   useEffect(() => {
@@ -236,14 +264,17 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [agentView, closeAgent]);
 
-  // The Files tab pulls in subagent edits the first time it opens (and again after an append), when there are agents to read.
+  // Direct agents first, then each run's agents in the order the menu lists them.
+  const allAgents = useMemo(() => agents.concat(...workflows.map((r) => r.agents)), [agents, workflows]);
+
+  // The Files tab pulls in subagent and workflow agent edits the first time it opens (and again after an append), when there are agents to read.
   useEffect(() => {
-    if (tab !== "files" || agents.length === 0) return;
+    if (tab !== "files" || allAgents.length === 0) return;
     if (filesScope === "main") {
       setFilesScope("merging");
       post({ type: "loadFiles" });
     }
-  }, [tab, filesScope, agents.length]);
+  }, [tab, filesScope, allAgents.length]);
 
   const agentsValue = useMemo(() => ({ agents, openAgent }), [agents, openAgent]);
 
@@ -268,8 +299,10 @@ export function App() {
   }
 
   const { meta, files, turns, done, appended } = state;
-  const agentIndex = agentView ? agents.findIndex((a) => a.agentId === agentView) : -1;
-  const agent = agentIndex >= 0 ? agents[agentIndex] : undefined;
+  const agent = agentView ? allAgents.find((a) => a.agentId === agentView) : undefined;
+  // Previous and next step through the list the agent belongs to: its run, or the direct agents.
+  const siblings = agent?.runId ? (workflows.find((r) => r.runId === agent.runId)?.agents ?? []) : agents;
+  const agentIndex = agent ? siblings.indexOf(agent) : -1;
   const messagesActive = tab === "messages";
   return (
     <TooltipProvider delayDuration={300}>
@@ -281,7 +314,9 @@ export function App() {
             openAt={openAt}
             onOpenAtChange={changeOpenAt}
             agents={agents}
-            onOpenAgent={openAgent}
+            workflows={workflows}
+            onOpenAgent={openAgentFromMenu}
+            agentsMenuReopen={menuReopen}
             tab={tab}
             onTabChange={setTab}
             filesCount={files.length}
@@ -315,22 +350,24 @@ export function App() {
                   key={agent.agentId}
                   agent={agent}
                   position={agentIndex}
-                  count={agents.length}
+                  count={siblings.length}
                   load={agentLoads[agent.agentId]}
                   active={messagesActive}
                   openAt={openAt}
                   jumpKey={jumpKey}
-                  onBack={closeAgent}
+                  backLabel={fromMenu ? "Back to the agents list" : undefined}
+                  onBack={backFromAgent}
+                  onClose={closeAgent}
                   onStep={(delta) => {
-                    const next = agents[agentIndex + delta];
-                    if (next) openAgent(next.agentId);
+                    const next = siblings[agentIndex + delta];
+                    if (next) showAgent(next.agentId);
                   }}
                 />
               </div>
             )}
           </div>
           <div className={tab === "files" ? "flex-1 min-h-0" : "hidden"}>
-            <FilesTab files={files} merging={filesScope === "merging"} agentCount={agents.length} />
+            <FilesTab files={files} merging={filesScope === "merging"} agentCount={allAgents.length} />
           </div>
         </div>
       </AgentsContext.Provider>

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { agentTag } from "../shared/agents";
 import type { HostToWebview, WebviewToHost } from "../shared/protocol";
-import type { FileChange, SessionData, SessionMeta, SubagentInfo, Turn } from "../shared/types";
+import type { FileChange, SessionData, SessionMeta, SubagentInfo, Turn, WorkflowRun } from "../shared/types";
 import { getOpenAt, getSessionsDir, setOpenAt } from "./config";
 import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
@@ -15,6 +15,7 @@ import { computeStatus, readLiveSessionIds } from "./liveStatus";
 import { parseSessionFile, SessionBuilder, type ParsedSession } from "./parser";
 import { resumeSession } from "./resume";
 import { listSubagents, mergedFileChanges, subagentsDir } from "./subagents";
+import { listWorkflowRuns, workflowsDir } from "./workflows";
 import { TailReader } from "./tail";
 import { ThemeTokens } from "./themeTokens";
 import { webviewHtml } from "./webviewHtml";
@@ -91,6 +92,7 @@ class SessionPanel {
   private data: SessionData | undefined;
   private source: LiveSource | undefined;
   private agents: SubagentInfo[] = [];
+  private workflows: WorkflowRun[] = [];
   private readonly agentCache = new Map<string, AgentSource>();
   private mergedFiles: Promise<FileChange[]> | undefined;
   /** Whether the viewer asked for merged files at least once, so appends keep them fresh. */
@@ -248,11 +250,12 @@ class SessionPanel {
 
   private concernsSession(changed: string): boolean {
     if (changed === this.meta.filePath) return true;
-    const agentsDir = subagentsDir(this.meta);
-    if (changed.startsWith(agentsDir + path.sep) || changed === agentsDir) return true;
+    // Workflow agents and journals live under the subagents folder; run files under workflows.
+    const dirs = [subagentsDir(this.meta), workflowsDir(this.meta)];
+    if (dirs.some((d) => changed.startsWith(d + path.sep) || changed === d)) return true;
     // A folder-level event (no file name on some platforms) for one of our folders.
     if (changed.endsWith(".jsonl")) return false;
-    return this.meta.filePath.startsWith(changed + path.sep) || agentsDir.startsWith(changed + path.sep);
+    return this.meta.filePath.startsWith(changed + path.sep) || dirs.some((d) => d.startsWith(changed + path.sep));
   }
 
   /** Read what was appended to the main and the loaded agent transcripts, then refresh what depends on it. */
@@ -373,15 +376,22 @@ class SessionPanel {
       /* no sessions folder, treat the parent as ended */
     }
     this.agents = await listSubagents(this.meta, { parentAlive, mainTurns: this.data?.turns });
+    this.workflows = await listWorkflowRuns(this.meta, { parentAlive });
+    const all = this.allAgents();
     for (const src of this.agentCache.values()) {
-      const fresh = this.agents.find((a) => a.agentId === src.info.agentId);
+      const fresh = all.find((a) => a.agentId === src.info.agentId);
       if (fresh) src.info = fresh;
     }
-    this.post({ type: "agents", list: this.agents });
+    this.post({ type: "agents", list: this.agents, workflows: this.workflows });
+  }
+
+  /** Direct subagents, then every workflow run's agents. */
+  private allAgents(): SubagentInfo[] {
+    return this.agents.concat(...this.workflows.map((r) => r.agents));
   }
 
   private agentSource(agentId: string): AgentSource | undefined {
-    const info = this.agents.find((a) => a.agentId === agentId);
+    const info = this.allAgents().find((a) => a.agentId === agentId);
     if (!info) return undefined;
     let src = this.agentCache.get(agentId);
     if (!src) {
@@ -425,14 +435,14 @@ class SessionPanel {
     }
   }
 
-  /** Files across main and every subagent; computed once per load (and again after an append) and reused by openDiff. */
+  /** Files across main, every subagent and every workflow agent; computed once per load (and again after an append) and reused by openDiff. */
   private async sendMergedFiles(): Promise<void> {
     if (!this.data) return;
     if (!this.mergedFiles) {
       const main = this.data;
       this.mergedFiles = (async () => {
         const agentTurns: Turn[][] = [];
-        for (const a of this.agents) {
+        for (const a of this.allAgents()) {
           try {
             agentTurns.push((await this.agentSource(a.agentId)!.parsed).turns);
           } catch {
