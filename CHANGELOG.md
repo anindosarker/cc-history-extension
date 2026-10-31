@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+- Resume with bypass permissions: a session's right-click menu has "Resume in Claude Code (Bypass Permissions)", and the session view's resume button has a dropdown with the same option. It runs `claude --resume <id> --permission-mode bypassPermissions`. Plain Resume is unchanged.
+
 ## 0.6.0
 
 - Copy prompt for another agent: from a session's right-click menu or the session view's `…` menu. It writes a clean, messages-only transcript with numbered turns to the extension's storage and copies a short prompt that tells a new agent to grep it instead of reading it whole.

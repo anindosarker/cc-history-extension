@@ -2,7 +2,7 @@
   "name": "cc-history",
   "displayName": "CC History",
   "description": "Claude Code session history: browse, search, diff and export every session. No time cutoff.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "anindosarker",
   "license": "MIT",
   "repository": {
@@ -97,6 +97,11 @@
         "title": "Resume in Terminal",
         "category": "Claude Code History",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "ccHistory.resumeBypass",
+        "title": "Resume in Claude Code (Bypass Permissions)",
+        "category": "Claude Code History"
       },
       {
         "command": "ccHistory.exportText",
@@ -223,6 +228,11 @@
           "command": "ccHistory.resume",
           "when": "view == ccHistory.sessions && viewItem == session",
           "group": "1_open@2"
+        },
+        {
+          "command": "ccHistory.resumeBypass",
+          "when": "view == ccHistory.sessions && viewItem == session",
+          "group": "1_open@3"
         },
         {
           "command": "ccHistory.exportText",

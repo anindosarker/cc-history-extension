@@ -196,7 +196,7 @@ class SessionPanel {
         await this.sendMergedFiles();
         return;
       case "resume":
-        resumeSession(this.meta);
+        resumeSession(this.meta, { bypass: msg.bypass });
         return;
       case "openUsage":
         await vscode.commands.executeCommand("ccHistory.openUsage");

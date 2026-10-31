@@ -74,6 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("ccHistory.openSession", withMeta((m) => panels.open(m))),
     vscode.commands.registerCommand("ccHistory.resume", withMeta((m) => resumeSession(m))),
+    vscode.commands.registerCommand("ccHistory.resumeBypass", withMeta((m) => resumeSession(m, { bypass: true }))),
     vscode.commands.registerCommand(
       "ccHistory.exportText",
       withMeta(async (m) => exportSession(await loadSessionData(m), "file")),

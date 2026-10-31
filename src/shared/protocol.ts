@@ -19,7 +19,8 @@ export type WebviewToHost =
   | { type: "loadAgent"; agentId: string }
   /** Ask for file changes across the main transcript and every subagent and workflow agent transcript. */
   | { type: "loadFiles" }
-  | { type: "resume" }
+  /** Resume in a terminal; `bypass` adds `--permission-mode bypassPermissions`. */
+  | { type: "resume"; bypass?: boolean }
   /** Open the usage panel (runs the ccHistory.openUsage command). */
   | { type: "openUsage" }
   /** Reveal the session's working directory in the OS file manager. */

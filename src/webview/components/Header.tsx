@@ -4,6 +4,7 @@ import {
   Download,
   Ellipsis,
   BotMessageSquare,
+  ChevronDown,
   ExternalLink,
   FileDiff,
   FileJson,
@@ -319,6 +320,19 @@ export function Header({
             </TooltipTrigger>
             <TooltipContent>Resume this session in a terminal</TooltipContent>
           </Tooltip>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="-ml-1 h-7 w-4" aria-label="Resume options" title="Resume options">
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => post({ type: "resume" })}>Resume</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => post({ type: "resume", bypass: true })}>
+                Resume with bypass permissions
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="More actions" title="More actions">

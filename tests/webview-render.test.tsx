@@ -771,7 +771,7 @@ describe("webview components render on the server", () => {
     );
     expect(html).toContain("c.ts");
     expect(html).toContain("partial");
-    // Row 1: title with the full tooltip, inline meta, icon-only Resume, "..." menu trigger.
+    // Row 1: title with the full tooltip, inline meta, icon-only Resume plus its options chevron, "..." menu trigger.
     const h1 = html.match(/<h1[^>]*>/)?.[0] ?? "";
     expect(h1).toContain("text-[16px]");
     expect(h1).toMatch(/title="Title\nb\n(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Nov 1[45], 2023 · [\d:]+( [AP]M)?\n15m\nmain\nsess"/);
@@ -784,8 +784,7 @@ describe("webview components render on the server", () => {
       "Open in new VS Code window",
       "Add to workspace",
     ]);
-    expect(html).toContain('aria-label="Resume"');
-    expect(html).toContain('aria-label="More actions"');
+    expect(html).toMatch(/aria-label="Resume".*aria-label="Resume options".*aria-label="More actions"/s);
     expect(html).not.toContain(">Save as .txt<");
     expect(html).not.toContain('aria-pressed="true"');
     // Row 2: text tabs and the search slot.
