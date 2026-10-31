@@ -42,6 +42,9 @@
   --chart-yellow: var(--vscode-charts-yellow, #cca700);
   --fn-foreground: var(--vscode-symbolIcon-functionForeground, var(--vscode-textLink-foreground, #3794ff));
   --ansi-yellow: var(--vscode-terminal-ansiYellow, #cca700);
+  /* Hovered Claude text block: a faint tint and a subtle outline. */
+  --block-hover-bg: color-mix(in srgb, var(--accent) 45%, transparent);
+  --block-hover-border: color-mix(in srgb, var(--vscode-widget-border, var(--border)) 70%, transparent);
 }
 
 @theme inline {
@@ -185,6 +188,24 @@
 }
 .chat-turn:hover > .chat-content > .turn-time {
   opacity: 0.6;
+}
+/* Copy a whole message: the button shows while its block or bubble is hovered or holds focus. */
+.text-block:hover {
+  background: var(--block-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--block-hover-border);
+}
+.copy-btn {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.copy-scope:hover .copy-btn,
+.copy-scope:focus-within .copy-btn,
+.copy-btn[data-copied] {
+  opacity: 1;
+}
+/* The stamp moves left of the copy button when the turn opens with a text block. */
+.chat-content:has(> .turn-blocks > .text-block:first-child) > .turn-time {
+  margin-right: 22px;
 }
 /* "Worked for 4m" fold: a quiet divider line that runs to the right edge. */
 .fold-rule {

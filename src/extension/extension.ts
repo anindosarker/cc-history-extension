@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { SessionMeta } from "../shared/types";
 import { DIFF_SCHEME, DiffContentProvider } from "./diffProvider";
 import { getShowStatus, getSortBy, setSortBy } from "./config";
-import { exportSession } from "./exportHost";
+import { copyAgentPrompt, exportSession } from "./exportHost";
 import { maybeShowFirstRunNotice } from "./firstRunHost";
 import { copyPath, revealFolder } from "./folder";
 import { Indexer } from "./indexer";
@@ -77,6 +77,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "ccHistory.exportText",
       withMeta(async (m) => exportSession(await loadSessionData(m), "file")),
+    ),
+    vscode.commands.registerCommand(
+      "ccHistory.copyAgentPrompt",
+      withMeta(async (m) => copyAgentPrompt(await loadSessionData(m), context.globalStorageUri)),
     ),
     vscode.commands.registerCommand(
       "ccHistory.copySessionId",

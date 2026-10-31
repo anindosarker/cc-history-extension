@@ -13,6 +13,8 @@ export type WebviewToHost =
   | { type: "revealFile"; path: string; line?: number; column?: number }
   | { type: "revealJsonl" }
   | { type: "export"; mode: "file" | "clipboard"; agentId?: string }
+  /** Write the reference transcript and copy a prompt that points a new agent at it. */
+  | { type: "copyAgentPrompt" }
   | { type: "listAgents" }
   | { type: "loadAgent"; agentId: string }
   /** Ask for file changes across the main transcript and every subagent and workflow agent transcript. */

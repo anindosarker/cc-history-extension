@@ -3,6 +3,7 @@ import type { OpenAll, VisibleTurn } from "@/lib/search";
 import { countOccurrences, blockText } from "@/lib/search";
 import { formatClock, formatFullDateTime } from "@/lib/format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CopyButton } from "./CopyButton";
 import { AgentTurn, NoticeTurn, RecapTurn, SystemTurn } from "./InjectedTurn";
 import { ImageBlock } from "./ImageBlock";
 import { TextBlock } from "./TextBlock";
@@ -38,7 +39,7 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
         const cur = bi === currentBlock ? currentOcc : -1;
         const hasMatch = query !== "" && countOccurrences(blockText(b), query) > 0;
         if (b.type === "text") {
-          return <TextBlock key={bi} text={b.text} query={query} current={cur} hasMatch={hasMatch} />;
+          return <TextBlock key={bi} text={b.text} query={query} current={cur} hasMatch={hasMatch} copyable={!isUser} />;
         }
         if (b.type === "thinking") {
           return (
@@ -53,14 +54,17 @@ export const TurnRow = memo(function TurnRow({ item, query, currentBlock, curren
   );
 
   if (isUser) {
+    // The card's markdown source: its text blocks as typed.
+    const source = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n\n");
     return (
       <div className="chat-turn py-[18px]" data-turn-index={item.index}>
         <div className="chat-content flex flex-col items-end">
-          <div className="chat-bubble max-w-[85%] min-w-0 rounded-[12px] px-[18px] py-[14px]">
+          <div className="chat-bubble copy-scope max-w-[85%] min-w-0 rounded-[12px] px-[18px] py-[14px]">
             {body}
-            {time && (
-              <div className="mt-[6px] text-right text-[11px] leading-none text-muted-foreground select-none">
-                <TimeStamp time={time} fullTime={fullTime} />
+            {(time || source) && (
+              <div className="mt-[6px] flex items-center justify-end gap-1 text-[11px] leading-none text-muted-foreground select-none">
+                {source && <CopyButton text={source} className="-my-1" />}
+                {time && <TimeStamp time={time} fullTime={fullTime} />}
               </div>
             )}
           </div>

@@ -705,7 +705,7 @@ describe("webview components render on the server", () => {
     expect(html).toContain("chat-bubble");
     // The timestamp sits inside the bubble and is always visible.
     const bubble = html.slice(html.indexOf("chat-bubble"), html.indexOf('data-turn-index="1"'));
-    expect(bubble).toMatch(/text-right[^>]*><span[^>]*class="time-stamp[^"]*"[^>]*>\d{1,2}:\d{2}( [AP]M)?<\/span><\/div>/);
+    expect(bubble).toMatch(/justify-end[^>]*>.*<span[^>]*class="time-stamp[^"]*"[^>]*>\d{1,2}:\d{2}( [AP]M)?<\/span><\/div>/);
     expect(html).toContain("tool-line");
     // Plain "Used <tool>" line, no outlined pill, and the error result is a small "failed".
     expect(html).toContain('Used <span class="tool-fn">Bash</span>');
@@ -864,7 +864,13 @@ describe("webview components render on the server", () => {
       size: 0,
     };
     const items = menuItems(meta);
-    expect(items.before.map((i) => i.label)).toEqual(["Save as .txt", "Copy transcript", "Reveal JSONL", "Copy session ID"]);
+    expect(items.before.map((i) => i.label)).toEqual([
+      "Save as .txt",
+      "Copy transcript",
+      "Copy prompt for another agent",
+      "Reveal JSONL",
+      "Copy session ID",
+    ]);
     expect(items.after.map((i) => i.label)).toEqual(["Show usage"]);
     expect(OPEN_AT_OPTIONS.map((o) => [o.value, o.label])).toEqual([
       ["oldest", "Oldest"],

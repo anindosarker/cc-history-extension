@@ -7,7 +7,7 @@ import type { FileChange, SessionData, SessionMeta, SubagentInfo, Turn, Workflow
 import { getOpenAt, getSessionsDir, setOpenAt } from "./config";
 import { extractFileChanges } from "./diff";
 import type { DiffContentProvider } from "./diffProvider";
-import { exportSession } from "./exportHost";
+import { copyAgentPrompt, exportSession } from "./exportHost";
 import { resolveFilePath } from "./filePaths";
 import { addFolderToWorkspace, openFolderInNewWindow, revealFolder } from "./folder";
 import type { Indexer } from "./indexer";
@@ -103,6 +103,7 @@ class SessionPanel {
   private tailAgain = false;
   private liveTimer: NodeJS.Timeout | undefined;
   private live = false;
+  private readonly storageUri: vscode.Uri;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -112,6 +113,7 @@ class SessionPanel {
     private meta: SessionMeta,
     private readonly onClosed: () => void,
   ) {
+    this.storageUri = context.globalStorageUri;
     const webviewRoot = vscode.Uri.joinPath(context.extensionUri, "dist", "webview");
     this.panel = vscode.window.createWebviewPanel(
       "ccHistory.session",
@@ -179,6 +181,9 @@ class SessionPanel {
       case "export":
         if (msg.agentId) await this.exportAgent(msg.agentId, msg.mode);
         else if (this.data) await exportSession(this.data, msg.mode);
+        return;
+      case "copyAgentPrompt":
+        if (this.data) await copyAgentPrompt(this.data, this.storageUri);
         return;
       case "listAgents":
         await this.sendAgents();

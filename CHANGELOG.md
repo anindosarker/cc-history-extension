@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Copy prompt for another agent: from a session's right-click menu or the session view's `…` menu. It writes a clean, messages-only transcript with numbered turns to the extension's storage and copies a short prompt that tells a new agent to grep it instead of reading it whole.
+- Copy a whole message: hovering a Claude message outlines it and shows a copy button that copies its markdown. Your own messages get the same button.
+
 ## 0.5.0
 
 - The Agents button shows workflow runs. Each run lists its name, status, duration and agent count, and opens to its agents grouped by phase, with tokens and tool calls. Regular subagents sit in their own Direct agents group. Any agent opens its transcript, and Back returns to the list it came from.

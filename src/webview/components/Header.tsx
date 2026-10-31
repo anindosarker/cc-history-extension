@@ -3,6 +3,7 @@ import {
   Clipboard,
   Download,
   Ellipsis,
+  BotMessageSquare,
   ExternalLink,
   FileDiff,
   FileJson,
@@ -136,6 +137,8 @@ export interface MenuItem {
   label: string;
   onSelect: () => void;
   icon?: React.ReactNode;
+  /** Hover tooltip. */
+  title?: string;
 }
 
 /** The "..." menu's plain items, in order; the Open at radio group sits between the two halves. */
@@ -144,6 +147,12 @@ export function menuItems(meta: SessionMeta): { before: MenuItem[]; after: MenuI
     before: [
       { label: "Save as .txt", icon: <Download />, onSelect: () => post({ type: "export", mode: "file" }) },
       { label: "Copy transcript", icon: <Clipboard />, onSelect: () => post({ type: "export", mode: "clipboard" }) },
+      {
+        label: "Copy prompt for another agent",
+        icon: <BotMessageSquare />,
+        title: "Copies a short prompt that lets a new agent look things up in this session without loading all of it.",
+        onSelect: () => post({ type: "copyAgentPrompt" }),
+      },
       { label: "Reveal JSONL", icon: <FileJson />, onSelect: () => post({ type: "revealJsonl" }) },
       { label: "Copy session ID", icon: <Hash />, onSelect: () => post({ type: "copyText", text: meta.sessionId }) },
     ],
@@ -318,7 +327,7 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[12rem]">
               {items.before.map((a) => (
-                <DropdownMenuItem key={a.label} onSelect={a.onSelect}>
+                <DropdownMenuItem key={a.label} onSelect={a.onSelect} title={a.title}>
                   {a.icon}
                   {a.label}
                 </DropdownMenuItem>
@@ -334,7 +343,7 @@ export function Header({
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               {items.after.map((a) => (
-                <DropdownMenuItem key={a.label} onSelect={a.onSelect}>
+                <DropdownMenuItem key={a.label} onSelect={a.onSelect} title={a.title}>
                   {a.icon}
                   {a.label}
                 </DropdownMenuItem>

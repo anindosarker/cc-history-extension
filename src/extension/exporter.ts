@@ -1,4 +1,4 @@
-import { formatFullDateTime } from "../shared/time";
+import { formatFullDateTime, formatHumanDate } from "../shared/time";
 import type { SessionData, Turn } from "../shared/types";
 
 export interface ExportOptions {
@@ -6,6 +6,11 @@ export interface ExportOptions {
   includeThinking: boolean;
   /** Replaces the "# <title>" first line, used for subagent transcripts. */
   heading?: string;
+  /**
+   * "reference": user and Claude text only, one "## [n] User · <time>" heading per turn, for another
+   * agent to grep. Tool calls, thinking and injected rows are left out whatever the other options say.
+   */
+  format?: "plain" | "reference";
 }
 
 /** Plain-text transcript in the spirit of Claude Code's /export. */
@@ -18,6 +23,10 @@ export function buildTranscript(data: SessionData, opts: ExportOptions): string 
   if (meta.gitBranch) lines.push(`Branch: ${meta.gitBranch}`);
   lines.push(`Session: ${meta.sessionId}`);
   lines.push("");
+  if (opts.format === "reference") {
+    referenceTurns(data).forEach(({ turn, body }, i) => lines.push(referenceHeading(turn, i + 1), body, ""));
+    return lines.join("\n").trimEnd() + "\n";
+  }
   for (const turn of data.turns) {
     if ((turn.kind === "system" || turn.kind === "notice") && !opts.includeToolResults) continue;
     const body = renderTurn(turn, opts);
@@ -64,6 +73,51 @@ function renderTurn(turn: Turn, opts: ExportOptions): string {
     }
   }
   return parts.join("\n").trim();
+}
+
+/** Turns the reference format keeps: typed user messages and Claude replies that hold text. */
+function referenceTurns(data: SessionData): { turn: Turn; body: string }[] {
+  const out: { turn: Turn; body: string }[] = [];
+  for (const turn of data.turns) {
+    if (turn.kind !== "user" && turn.kind !== "assistant") continue;
+    const body = turn.blocks
+      .map((b) => (b.type === "text" ? b.text.trim() : b.type === "image" ? "[image]" : ""))
+      .filter(Boolean)
+      .join("\n\n");
+    if (body) out.push({ turn, body });
+  }
+  return out;
+}
+
+function referenceHeading(turn: Turn, n: number): string {
+  const who = turn.kind === "assistant" ? "Claude" : "User";
+  return turn.timestamp ? `## [${n}] ${who} · ${formatFullDateTime(turn.timestamp)}` : `## [${n}] ${who}`;
+}
+
+/** Number of "## [n]" messages the reference format writes for this session. */
+export function referenceMessageCount(data: SessionData): number {
+  return referenceTurns(data).length;
+}
+
+export interface AgentPromptInfo {
+  title: string;
+  projectName: string;
+  startedAt?: number;
+  messageCount: number;
+  /** Absolute path of the reference transcript. */
+  path: string;
+}
+
+/** The prompt that points a new agent at a reference transcript without loading all of it. */
+export function agentPrompt(info: AgentPromptInfo): string {
+  const facts = [info.projectName, info.startedAt ? formatHumanDate(info.startedAt) : undefined, `${info.messageCount} messages`];
+  return [
+    `Earlier Claude Code session: "${info.title}" (${facts.filter(Boolean).join(", ")}).`,
+    `Transcript: "${info.path}"`,
+    `It holds messages only, one "## [n] User|Claude · <time>" heading per turn.`,
+    "Do not read the whole file. grep -n for what you need, then read only those line ranges.",
+    "Question:",
+  ].join("\n");
 }
 
 export function slugify(title: string): string {
