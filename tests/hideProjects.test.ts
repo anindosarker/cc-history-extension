@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_HIDDEN_PROJECTS, isHiddenProject, visibleSessions } from "../src/extension/hideProjects";
 import { groupByProject } from "../src/extension/indexScan";
-import { weekSummary } from "../src/extension/usage/weekSummary";
 import type { SessionMeta } from "../src/shared/types";
 
 const now = Date.UTC(2026, 9, 15, 12, 0, 0);
@@ -48,7 +47,7 @@ describe("hideProjects matcher", () => {
   });
 });
 
-describe("tree and week summary hide matching projects", () => {
+describe("tree hides matching projects", () => {
   const sessions = [
     meta("a", "/Users/me/work/app"),
     meta("b", "/private/var/folders/zz/T/tmp.abc"),
@@ -65,11 +64,5 @@ describe("tree and week summary hide matching projects", () => {
   it("keeps every project when nothing is hidden", () => {
     const groups = groupByProject(visibleSessions(sessions, []));
     expect(groups).toHaveLength(3);
-  });
-
-  it("leaves hidden projects out of the week summary", () => {
-    const s = weekSummary(visibleSessions(sessions, DEFAULT_HIDDEN_PROJECTS), now);
-    expect(s.sessions).toBe(2);
-    expect(s.topProjects).toEqual([{ name: "app", sessions: 2 }]);
   });
 });

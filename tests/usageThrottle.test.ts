@@ -145,7 +145,7 @@ describe("429 schedule", () => {
     expect(m.stale).toBe(true);
     expect(m.lines[0]).toBe(PAUSED_TEXT);
     expect(m.lines[2]).toBe("HTTP 429");
-    const view = toUsageView(h.engine.state, { sessions: 0, messages: 0, topProjects: [] });
+    const view = toUsageView(h.engine.state);
     expect(view.paused).toBe(true);
     expect(view.limits[0].pct).toBe(81);
   });
@@ -161,7 +161,7 @@ describe("manual refresh rate limit", () => {
     expect(waitLabel(T0 + 5_000, T0)).toBe("Please wait 5s");
     const lines = statusModel({ refreshing: false, snapshot: snap(T0), manualWaitUntil: T0 + 30_000 }, settings, T0).lines;
     expect(lines[lines.length - 1]).toBe("Please wait 30s");
-    expect(toUsageView({ refreshing: false, manualWaitUntil: T0 + 30_000 }, { sessions: 0, messages: 0, topProjects: [] }).waitUntil).toBe(T0 + 30_000);
+    expect(toUsageView({ refreshing: false, manualWaitUntil: T0 + 30_000 }).waitUntil).toBe(T0 + 30_000);
   });
 });
 

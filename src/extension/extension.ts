@@ -31,7 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const usageLog = vscode.window.createOutputChannel("Claude Code History");
   const usage = new UsagePoller(version, (line) => usageLog.appendLine(line));
   const usageBar = new UsageStatusBar(usage);
-  const usagePanel = new UsagePanelManager(context, usage, indexer);
+  const usagePanel = new UsagePanelManager(context, usage);
 
   const metaFrom = (arg: unknown): SessionMeta | undefined => {
     if (arg instanceof SessionNode) return arg.meta;

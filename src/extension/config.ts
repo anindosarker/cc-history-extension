@@ -51,7 +51,7 @@ export function getShowStatus(): boolean {
   return vscode.workspace.getConfiguration("ccHistory.tree").get<boolean>("showStatus") ?? true;
 }
 
-/** Glob patterns for project folders hidden from the tree, the quick pick and the week summary. */
+/** Glob patterns for project folders hidden from the tree and the quick pick. */
 export function getHideProjects(): string[] {
   const raw = vscode.workspace.getConfiguration("ccHistory.tree").get<unknown>("hideProjects");
   if (!Array.isArray(raw)) return [...DEFAULT_HIDDEN_PROJECTS];

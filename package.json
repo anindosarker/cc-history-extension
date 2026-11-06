@@ -335,7 +335,7 @@
             "/private/var/folders/**",
             "/tmp/**"
           ],
-          "description": "Glob patterns for project folders to hide from the Sessions view, Find Session and the usage panel's week summary. A project is hidden when its working directory matches any pattern."
+          "description": "Glob patterns for project folders to hide from the Sessions view and Find Session. A project is hidden when its working directory matches any pattern."
         },
         "ccHistory.claudeCommand": {
           "type": "string",

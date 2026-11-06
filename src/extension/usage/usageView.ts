@@ -4,7 +4,6 @@ import {
   type UsageLimitView,
   type UsageThresholds,
   type UsageView,
-  type WeekSummary,
 } from "../../shared/usage";
 import type { UsageSnapshot } from "./usageClient";
 import type { UsageState } from "./usagePoller";
@@ -30,11 +29,10 @@ export function limitRows(snap: UsageSnapshot): UsageLimitView[] {
   return rows.map((r) => (r.resetsAt === undefined ? { key: r.key, label: r.label, pct: r.pct, windowMs: r.windowMs } : r));
 }
 
-export function toUsageView(state: UsageState, week: WeekSummary, thresholds?: UsageThresholds): UsageView {
+export function toUsageView(state: UsageState, thresholds?: UsageThresholds): UsageView {
   const view: UsageView = {
     limits: state.snapshot ? limitRows(state.snapshot) : [],
     refreshing: state.refreshing,
-    week,
   };
   if (thresholds) view.thresholds = thresholds;
   if (state.snapshot) view.fetchedAt = state.snapshot.fetchedAt;

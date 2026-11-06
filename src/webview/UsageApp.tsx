@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 const CLOCK_TICK_MS = 10_000;
 
-/** Rate-limit usage panel: a few bars with pace markers and a summary of this week's sessions. */
+/** Rate-limit usage panel: a few bars with pace markers, coloured by level. */
 export function UsageApp() {
   const [view, setView] = useState<UsageView | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
@@ -117,42 +117,19 @@ export function UsageApp() {
           )
         )}
 
-        <h2 className="mt-7 text-[14px] font-semibold">This week</h2>
-        <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-1">
-          <Stat value={view.week.sessions} label={view.week.sessions === 1 ? "session" : "sessions"} />
-          <Stat value={view.week.messages} label={view.week.messages === 1 ? "message" : "messages"} />
-        </div>
-        {view.week.topProjects.length > 0 && (
-          <ul className="mt-2 flex flex-col gap-0.5 text-muted-foreground">
-            {view.week.topProjects.map((p) => (
-              <li key={p.name} className="flex items-baseline gap-2 min-w-0">
-                <span className="text-foreground truncate">{p.name}</span>
-                <span className="tabular-nums text-[11px] whitespace-nowrap">
-                  {p.sessions} {p.sessions === 1 ? "session" : "sessions"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[18px] font-semibold tabular-nums leading-none">{value.toLocaleString()}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </span>
-  );
-}
-
-/** The same thresholds and colour source as the status bar, so the two never disagree. */
+/**
+ * The same thresholds and colour source as the status bar, so the two never disagree. Below the
+ * warning level the bar is the theme's chart green, so every bar carries a colour.
+ */
 function barColor(level: BarLevel): string {
   if (level === "error") return "var(--vscode-statusBarItem-errorBackground, var(--vscode-charts-red))";
   if (level === "warning") return "var(--vscode-statusBarItem-warningBackground, var(--vscode-charts-yellow))";
-  return "currentColor";
+  return "var(--vscode-charts-green, #388a34)";
 }
 
 function LimitRow({ limit, now, thresholds }: { limit: UsageLimitView; now: number; thresholds: UsageThresholds }) {

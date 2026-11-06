@@ -25,14 +25,6 @@ export interface UsageFailureView {
   at: number;
 }
 
-export interface WeekSummary {
-  /** Sessions whose first message is within the last seven days. */
-  sessions: number;
-  /** Messages across those sessions. */
-  messages: number;
-  topProjects: { name: string; sessions: number }[];
-}
-
 /** The colour rules the status bar follows, sent along so the panel's bars agree with it. */
 export interface UsageThresholds {
   warnAt: number;
@@ -61,7 +53,6 @@ export interface UsageView {
   limits: UsageLimitView[];
   error?: UsageFailureView;
   refreshing: boolean;
-  week: WeekSummary;
   /** Absent only from hosts older than the setting; the panel then uses the defaults. */
   thresholds?: UsageThresholds;
   /** Automatic polling stopped after repeated 429s; Refresh resumes it. */

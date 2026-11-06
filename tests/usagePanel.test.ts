@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { limitRows, toUsageView } from "../src/extension/usage/usageView";
-import { weekSummary } from "../src/extension/usage/weekSummary";
-import type { SessionMeta } from "../src/shared/types";
 import { barLevel, elapsedFraction, FIVE_HOURS_MS, paceProjection, SEVEN_DAYS_MS } from "../src/shared/usage";
 
 const now = Date.UTC(2026, 9, 15, 12, 0, 0);
@@ -29,50 +27,6 @@ describe("pace projection", () => {
   });
 });
 
-function meta(id: string, project: string, startedAt: number, messageCount = 4): SessionMeta {
-  return {
-    sessionId: id,
-    filePath: `/p/${id}.jsonl`,
-    cwd: `/home/me/${project}`,
-    projectName: project,
-    title: id,
-    titleSource: "ai",
-    messageCount,
-    filesChanged: 0,
-    mtime: startedAt,
-    size: 1,
-    startedAt,
-  };
-}
-
-describe("week summary", () => {
-  it("counts sessions started in the last seven days and ranks projects", () => {
-    const sessions = [
-      meta("a", "alpha", now - 1 * day, 10),
-      meta("b", "alpha", now - 2 * day, 5),
-      meta("c", "beta", now - 3 * day, 1),
-      meta("d", "gamma", now - 6 * day + hour, 2),
-      meta("e", "gamma", now - 7 * day - hour, 100),
-      meta("f", "delta", now - 8 * day, 100),
-      meta("g", "beta", now + day, 100),
-    ];
-    const s = weekSummary(sessions, now);
-    expect(s.sessions).toBe(4);
-    expect(s.messages).toBe(18);
-    expect(s.topProjects).toEqual([
-      { name: "alpha", sessions: 2 },
-      { name: "beta", sessions: 1 },
-      { name: "gamma", sessions: 1 },
-    ]);
-  });
-
-  it("falls back to the file mtime when a session has no start time and handles an empty index", () => {
-    const noStart: SessionMeta = { ...meta("x", "p", now - day), startedAt: undefined };
-    expect(weekSummary([noStart], now).sessions).toBe(1);
-    expect(weekSummary([], now)).toEqual({ sessions: 0, messages: 0, topProjects: [] });
-  });
-});
-
 describe("usage view mapping", () => {
   it("turns a snapshot into labelled rows with window lengths", () => {
     const rows = limitRows({
@@ -93,7 +47,6 @@ describe("usage view mapping", () => {
   });
 
   it("carries the error and the last good reading side by side", () => {
-    const week = { sessions: 0, messages: 0, topProjects: [] };
     const view = toUsageView(
       {
         snapshot: { fetchedAt: now - 60_000, fiveHour: { pct: 50 }, scoped: [] },
@@ -101,16 +54,15 @@ describe("usage view mapping", () => {
         plan: "team",
         refreshing: false,
       },
-      week,
     );
     expect(view.fetchedAt).toBe(now - 60_000);
     expect(view.limits).toHaveLength(1);
     expect(view.error).toEqual({ reason: "network", message: "ECONNRESET", at: now });
     expect(view.plan).toBe("team");
-    expect(toUsageView({ refreshing: true }, week)).toEqual({ limits: [], refreshing: true, week });
+    expect(toUsageView({ refreshing: true })).toEqual({ limits: [], refreshing: true });
     // The status bar's thresholds ride along so the panel colours its bars the same way.
     const t = { warnAt: 50, errorAt: 60, colorBy: "fiveHour" as const };
-    expect(toUsageView({ refreshing: false }, week, t).thresholds).toEqual(t);
+    expect(toUsageView({ refreshing: false }, t).thresholds).toEqual(t);
   });
 
   it("colours a bar by the host's thresholds and colour source", () => {

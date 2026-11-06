@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The usage panel drops the "This week" summary of sessions, messages and top projects.
+- Usage panel bars are coloured by level: green below the warning threshold, then the same warning and error colours as the status bar.
 - Switch Claude Account: the account icon in the Sessions view title (or the "Claude Code History: Switch Claude Account" command) opens a "Claude Login" terminal running `claude auth login`. When you close that terminal, the usage widget re-reads the credentials and fetches usage for the new account. The usage panel (click the usage status bar item) has a "Switch account" button in its header, and also in the error box when credentials are missing or expired.
 
 ## 0.6.1

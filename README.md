@@ -28,9 +28,9 @@ Subagent transcripts: an Agents popover, per-agent views and links from Agent to
 
 Files changed in a session, with whole-file and per-hunk diffs in the native diff editor.
 
-![Usage panel with pace markers and the week summary](media/screenshots/usage.png)
+![Usage panel with pace markers](media/screenshots/usage.png)
 
-The usage panel: 5-hour, weekly and per-model limits with pace markers, projections and this week's sessions.
+The usage panel: 5-hour, weekly and per-model limits with pace markers and projections, each bar coloured by level.
 
 ![The viewer in a light theme](media/screenshots/light.png)
 
@@ -102,7 +102,7 @@ Polling is deliberately light: one request every 5 minutes by default (`ccHistor
 | `ccHistory.sessionsDir` | empty | Folder with live session files for the status dots. Empty uses the sessions folder next to the projects folder. |
 | `ccHistory.tree.showStatus` | `true` | Show the running, open and recently ended dots. When off, the sessions folder is not watched or polled. |
 | `ccHistory.tree.sortBy` | `activity` | Order of projects and sessions: `activity` (most recent first), `name` (A to Z) or `sessions` (most sessions first). Current workspace projects always come first. |
-| `ccHistory.tree.hideProjects` | `["/private/var/folders/**", "/tmp/**"]` | Glob patterns for project folders to hide from the Sessions view, Find Session and the usage panel's week summary. |
+| `ccHistory.tree.hideProjects` | `["/private/var/folders/**", "/tmp/**"]` | Glob patterns for project folders to hide from the Sessions view and Find Session. |
 | `ccHistory.claudeCommand` | `claude` | Command used when resuming a session. |
 | `ccHistory.openAt` | `oldest` | Open a session at the first or the latest message. |
 | `ccHistory.export.includeToolResults` | `false` | Include tool results in text exports. |
