@@ -80,15 +80,8 @@ export function UsageApp() {
     <TooltipProvider delayDuration={200}>
       <div className="h-full overflow-y-auto scroll-thin">
         <div className="mx-auto max-w-[640px] px-5 py-4 text-[13px] leading-[1.55]">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-[15px] font-semibold leading-tight">Usage</h1>
-              {(account || view.plan) && (
-                <div className="mt-0.5 truncate text-[11px] text-muted-foreground" data-account>
-                  {[account, view.plan].filter(Boolean).join(" · ")}
-                </div>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+            <h1 className="mr-auto text-[15px] font-semibold leading-tight">Usage</h1>
             <span className="text-[11px] text-muted-foreground whitespace-nowrap">
               {fetchedAt !== undefined ? `Updated ${formatAgo(now - fetchedAt)}` : "Not fetched yet"}
             </span>
@@ -101,6 +94,11 @@ export function UsageApp() {
               Switch account
             </Button>
           </div>
+          {(account || view.plan) && (
+            <div className="mt-0.5 text-[12px] text-muted-foreground break-words" data-account>
+              {[account, view.plan].filter(Boolean).join(" · ")}
+            </div>
+          )}
 
           {retryText && <div className="mt-3 text-[11px] text-muted-foreground">{retryText}</div>}
 

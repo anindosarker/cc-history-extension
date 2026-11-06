@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Usage panel header no longer cuts off the signed-in account: the title and buttons share the first row, and the account, organization and plan get their own full-width line below.
+
 ## 1.0.0
 
 - Usage refresh reworked: clicking Refresh (or Retry, or "Refresh Usage") always fetches new numbers. There is no one-per-minute limit any more. If another VS Code window is already fetching, the click waits for that window's result and shows it. Only a rate limit after a `429` can hold a click back (the server's `Retry-After`, at least one minute), and the panel and status bar say until when.
