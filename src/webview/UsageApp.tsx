@@ -2,15 +2,18 @@ import { useEffect, useState } from "react";
 import { ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
 import {
   DEFAULT_THRESHOLDS,
-  PAUSED_NOTICE,
-  waitLabel,
   ERROR_REASON_TEXT,
+  accountLabel,
   barLevel,
   elapsedFraction,
   formatAgo,
   formatResetAt,
+  heldText,
+  paceMarkerText,
   paceProjection,
   pct,
+  readingExpired,
+  retryUntilText,
   type UsageHostToWebview,
   type BarLevel,
   type UsageLimitView,
@@ -18,6 +21,7 @@ import {
   type UsageView,
 } from "@shared/usage";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { post } from "@/lib/vscode";
 import { cn } from "@/lib/utils";
 
@@ -27,11 +31,14 @@ const CLOCK_TICK_MS = 10_000;
 export function UsageApp() {
   const [view, setView] = useState<UsageView | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
+  // Spinner from the click until the host reports the refresh is over.
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent<UsageHostToWebview>) => {
       if (e.data?.type === "usageSnapshot") {
         setView(e.data.view);
+        if (!e.data.view.refreshing) setPending(false);
         setNow(Date.now());
       }
     };
@@ -44,10 +51,14 @@ export function UsageApp() {
     };
   }, []);
 
-  const refresh = () => post({ type: "usageRefresh" });
+  const refresh = () => {
+    setPending(true);
+    post({ type: "usageRefresh" });
+  };
   const switchAccount = () => post({ type: "switchAccount" });
-  const wait = view ? waitLabel(view.waitUntil, now) : undefined;
-  const refreshDisabled = view ? view.refreshing || wait !== undefined : true;
+  const retryText = view ? retryUntilText(view.retryUntil, now) : undefined;
+  const spinning = pending || (view?.refreshing ?? false);
+  const refreshDisabled = view ? spinning || retryText !== undefined : true;
 
   if (!view) {
     return (
@@ -58,67 +69,88 @@ export function UsageApp() {
     );
   }
 
-  const hasReading = view.limits.length > 0;
+  // The panel ticks between pushes, so drop a reading here too once it expires.
+  const expired = view.fetchedAt !== undefined && readingExpired(view.fetchedAt, view.limits, now);
+  const limits = expired ? [] : view.limits;
+  const fetchedAt = expired ? undefined : view.fetchedAt;
+  const hasReading = limits.length > 0;
+  const held = heldText(view.error, fetchedAt, now);
+  const account = accountLabel(view.account);
   return (
-    <div className="h-full overflow-y-auto scroll-thin">
-      <div className="mx-auto max-w-[640px] px-5 py-4 text-[13px] leading-[1.55]">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-[15px] font-semibold leading-tight">Usage</h1>
-          {view.plan && <span className="text-muted-foreground truncate">{view.plan}</span>}
-          <span className="ml-auto text-[11px] text-muted-foreground whitespace-nowrap">
-            {view.fetchedAt !== undefined ? `Updated ${formatAgo(now - view.fetchedAt)}` : "Not fetched yet"}
-          </span>
-          <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshDisabled} aria-label="Refresh usage" title={wait}>
-            <RefreshCw className={cn(view.refreshing && "animate-spin")} />
-            {wait ?? "Refresh"}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={switchAccount} aria-label="Switch account" title="Sign in to a different Claude account">
-            <ArrowLeftRight />
-            Switch account
-          </Button>
-        </div>
-
-        {view.paused && (
-          <div className="usage-paused mt-4 rounded-[6px] border border-border px-3 py-2 text-muted-foreground">{PAUSED_NOTICE}</div>
-        )}
-
-        {view.error && (
-          <div className="mt-4 rounded-[6px] border border-destructive/50 px-3 py-2">
-            <div className="text-destructive">{ERROR_REASON_TEXT[view.error.reason]}</div>
-            {(view.error.reason === "http" || view.error.reason === "network") && (
-              <div className="mt-0.5 text-[11px] text-muted-foreground">{view.error.message}</div>
-            )}
-            <div className="mt-1.5 flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={refresh} disabled={refreshDisabled} title={wait}>
-                {wait ?? "Retry"}
-              </Button>
-              {(view.error.reason === "no-credentials" || view.error.reason === "token-expired") && (
-                <Button variant="outline" size="sm" onClick={switchAccount}>
-                  <ArrowLeftRight />
-                  Switch account
-                </Button>
+    <TooltipProvider delayDuration={200}>
+      <div className="h-full overflow-y-auto scroll-thin">
+        <div className="mx-auto max-w-[640px] px-5 py-4 text-[13px] leading-[1.55]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[15px] font-semibold leading-tight">Usage</h1>
+              {(account || view.plan) && (
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground" data-account>
+                  {[account, view.plan].filter(Boolean).join(" · ")}
+                </div>
               )}
-              <span className="text-[11px] text-muted-foreground">Last attempt {formatAgo(now - view.error.at)}</span>
             </div>
+            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+              {fetchedAt !== undefined ? `Updated ${formatAgo(now - fetchedAt)}` : "Not fetched yet"}
+            </span>
+            <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshDisabled} aria-label="Refresh usage" title={retryText}>
+              <RefreshCw className={cn(spinning && "animate-spin")} />
+              Refresh
+            </Button>
+            <Button variant="ghost" size="sm" onClick={switchAccount} aria-label="Switch account" title="Sign in to a different Claude account">
+              <ArrowLeftRight />
+              Switch account
+            </Button>
           </div>
-        )}
 
-        {hasReading ? (
-          <div className="mt-5 flex flex-col gap-4">
-            {view.limits.map((l) => (
-              <LimitRow key={l.label} limit={l} now={now} thresholds={view.thresholds ?? DEFAULT_THRESHOLDS} />
-            ))}
-          </div>
-        ) : (
-          !view.error && (
-            <div className="mt-5 text-muted-foreground">
-              {view.refreshing ? "Fetching usage…" : "No usage limits reported for this account."}
+          {retryText && <div className="mt-3 text-[11px] text-muted-foreground">{retryText}</div>}
+
+          {held ? (
+            <div className="mt-4 rounded-[6px] border border-border px-3 py-2 text-muted-foreground" data-held>
+              {held}
+              {view.error && view.error.status !== 429 && (
+                <div className="mt-0.5 text-[11px]">{view.error.message}</div>
+              )}
             </div>
-          )
-        )}
+          ) : (
+            view.error && (
+              <div className="mt-4 rounded-[6px] border border-destructive/50 px-3 py-2">
+                <div className="text-destructive">{ERROR_REASON_TEXT[view.error.reason]}</div>
+                {(view.error.reason === "http" || view.error.reason === "network") && (
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">{view.error.message}</div>
+                )}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={refresh} disabled={refreshDisabled} title={retryText}>
+                    {spinning && <Loader2 className="animate-spin" />}
+                    Retry
+                  </Button>
+                  {(view.error.reason === "no-credentials" || view.error.reason === "token-expired") && (
+                    <Button variant="outline" size="sm" onClick={switchAccount}>
+                      <ArrowLeftRight />
+                      Switch account
+                    </Button>
+                  )}
+                  <span className="text-[11px] text-muted-foreground">Last attempt {formatAgo(now - view.error.at)}</span>
+                </div>
+              </div>
+            )
+          )}
 
+          {hasReading ? (
+            <div className="mt-5 flex flex-col gap-4">
+              {limits.map((l) => (
+                <LimitRow key={l.label} limit={l} now={now} thresholds={view.thresholds ?? DEFAULT_THRESHOLDS} />
+              ))}
+            </div>
+          ) : (
+            !view.error && (
+              <div className="mt-5 text-muted-foreground">
+                {spinning || expired ? "Fetching usage…" : "No usage limits reported for this account."}
+              </div>
+            )
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -136,31 +168,42 @@ function LimitRow({ limit, now, thresholds }: { limit: UsageLimitView; now: numb
   const elapsed = limit.resetsAt !== undefined ? elapsedFraction(limit.resetsAt, limit.windowMs, now) : undefined;
   const projected = elapsed !== undefined ? paceProjection(limit.pct, elapsed) : undefined;
   const fill = Math.min(100, Math.max(0, limit.pct));
+  const color = barColor(barLevel(limit, thresholds));
+  const bar = (
+    <div
+      className="relative mt-1.5 h-1 w-full rounded-full"
+      // The level colour tints the whole track, so it shows even at 0%; the used part is solid.
+      style={{ background: `color-mix(in srgb, ${color} 20%, transparent)` }}
+      role="progressbar"
+      aria-valuenow={Math.round(limit.pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={limit.label}
+    >
+      <div className="h-full rounded-full" style={{ width: `${fill}%`, background: color }} />
+      {elapsed !== undefined && (
+        <div className="absolute top-[-6px] h-4 w-3 -translate-x-1/2 flex justify-center" style={{ left: `${elapsed * 100}%` }} data-pace-marker>
+          <div className="mt-[3px] h-[10px] w-px bg-foreground/70" />
+        </div>
+      )}
+    </div>
+  );
   return (
     <div data-limit={limit.label}>
       <div className="flex items-baseline gap-3">
         <span className="min-w-0 flex-1 truncate">{limit.label}</span>
         <span className="tabular-nums font-medium">{pct(limit.pct)}</span>
       </div>
-      <div
-        className="relative mt-1.5 h-1 w-full rounded-full"
-        style={{ background: "color-mix(in srgb, currentColor 14%, transparent)" }}
-        role="progressbar"
-        aria-valuenow={Math.round(limit.pct)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={limit.label}
-      >
-        <div className="h-full rounded-full" style={{ width: `${fill}%`, background: barColor(barLevel(limit, thresholds)) }} />
-        {elapsed !== undefined && (
-          <div
-            className="absolute top-[-3px] h-[10px] w-px bg-foreground/60"
-            style={{ left: `${elapsed * 100}%` }}
-            title="Even pace through the window"
-            data-pace-marker
-          />
-        )}
-      </div>
+      {elapsed !== undefined ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="py-1 -my-1 cursor-default">{bar}</div>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[320px] text-[12px]">{paceMarkerText(elapsed)}</TooltipContent>
+        </Tooltip>
+      ) : (
+        bar
+      )}
       <div className="mt-1 text-[11px] text-muted-foreground">
         {limit.resetsAt !== undefined ? `resets ${formatResetAt(limit.resetsAt, now)}` : "no reset time reported"}
         {projected !== undefined && ` · on pace for ~${Math.round(projected)}% at reset`}

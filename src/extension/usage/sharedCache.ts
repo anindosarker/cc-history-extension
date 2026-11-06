@@ -1,13 +1,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { UsageErrorReason } from "../../shared/usage";
-import { LOCK_MAX_AGE_MS, MANUAL_MIN_GAP_MS } from "./schedule";
+import type { UsageAccount, UsageErrorReason } from "../../shared/usage";
+import { FOCUS_STALE_MS, LOCK_POLL_MS, RESET_GRACE_MS } from "./schedule";
 import type { UsageSnapshot } from "./usageClient";
 
 /**
  * One usage fetch per machine: every VS Code window reads and writes this file so only one of them
- * talks to the endpoint per interval. It never holds a token, only the reply and the timing.
+ * talks to the endpoint at a time. It never holds a token, only the reply, the account label and the timing.
  */
 export interface UsageCacheFile {
   /** When the snapshot was fetched. */
@@ -15,11 +15,19 @@ export interface UsageCacheFile {
   snapshot?: UsageSnapshot;
   /** Plan and tier, from the credentials file (not a secret). */
   plan?: string;
+  /** Signed-in email and organization, from ~/.claude.json. */
+  account?: UsageAccount;
+  /** The latest failed attempt; cleared by the next success. */
   lastError?: { reason: UsageErrorReason; message: string; status?: number; at: number };
-  /** No window may fetch before this (429 backoff). */
-  nextAllowedAt?: number;
-  /** A window started a fetch at this time; others skip while it is younger than LOCK_MAX_AGE_MS. */
-  fetchingSince?: number;
+  /** When any window last finished an attempt, good or bad; background polls space themselves from it. */
+  attemptedAt?: number;
+  /** The server's Retry-After from a 429: no window fetches before this, manual refreshes included. */
+  retryUntil?: number;
+  /**
+   * Bumped when any window switches account. Every window that sees a newer value drops its cached
+   * token and the old account's numbers; a fetch started before it never writes its result.
+   */
+  credentialsEpoch?: number;
 }
 
 export const USAGE_CACHE_FILE = "usage.json";
@@ -33,36 +41,44 @@ export function usageCachePath(home = os.homedir()): string {
 }
 
 export type CacheAction =
-  /** Nothing fresh enough and nothing in the way: fetch. */
+  /** Nothing in the way: fetch (after taking the fetch lock). */
   | { action: "fetch" }
-  /** Another window fetched recently: adopt its snapshot, poll again at `until`. */
-  | { action: "use-cache"; until: number }
-  /** A 429 backoff is in force (ours or another window's): wait until `until`. */
-  | { action: "wait"; until: number }
-  /** Another window is fetching right now: look again at `until` (the watcher usually gets there first). */
-  | { action: "skip-locked"; until: number };
+  /** The latest attempt is recent enough for this kind of refresh: look again at `until`. */
+  | { action: "fresh"; until: number }
+  /** Rate limited (server Retry-After, at least a minute after any 429): no fetch before `until`. */
+  | { action: "retry-after"; until: number };
 
 export interface CacheDecisionInput {
   cache: UsageCacheFile | undefined;
   now: number;
-  intervalMs: number;
-  /** A manual refresh accepts a cached snapshot only when it is younger than the manual gap. */
-  manual: boolean;
-  /** When this window's own latest snapshot was fetched, in case the cache is older or missing. */
-  localFetchedAt?: number;
+  /**
+   * Skip the fetch while the latest attempt (this window's or another's) is younger than this:
+   * the poll interval for timer polls, five minutes for focus and panel open, 0 for manual.
+   */
+  minAgeMs: number;
+  /** When this window last fetched or attempted, in case the cache file is older or missing. */
+  localAttemptedAt?: number;
+  /** After an account switch: the old account's rate limit does not apply. */
+  ignoreRetryAfter?: boolean;
+}
+
+/** True once any limit in the snapshot has passed its reset time: its numbers are no longer right. */
+export function resetPassed(snapshot: UsageSnapshot | undefined, now: number): boolean {
+  if (!snapshot) return false;
+  const limits = [snapshot.fiveHour, snapshot.weekly, ...snapshot.scoped];
+  return limits.some((l) => l?.resetsAt !== undefined && l.resetsAt + RESET_GRACE_MS <= now);
 }
 
 export function cacheDecision(input: CacheDecisionInput): CacheAction {
-  const { cache, now, intervalMs, manual } = input;
-  if (cache?.fetchingSince !== undefined && now - cache.fetchingSince < LOCK_MAX_AGE_MS && cache.fetchingSince <= now) {
-    return { action: "skip-locked", until: cache.fetchingSince + LOCK_MAX_AGE_MS };
+  const { cache, now } = input;
+  if (!input.ignoreRetryAfter && cache?.retryUntil !== undefined && cache.retryUntil > now) {
+    return { action: "retry-after", until: cache.retryUntil };
   }
-  if (cache?.nextAllowedAt !== undefined && cache.nextAllowedAt > now) return { action: "wait", until: cache.nextAllowedAt };
-  const fetchedAt = Math.max(cache?.fetchedAt ?? 0, input.localFetchedAt ?? 0);
-  if (fetchedAt > 0 && fetchedAt <= now) {
-    const freshFor = manual ? Math.min(MANUAL_MIN_GAP_MS, intervalMs) : intervalMs;
-    if (now - fetchedAt < freshFor) return { action: "use-cache", until: fetchedAt + intervalMs };
-  }
+  if (input.minAgeMs <= 0) return { action: "fetch" };
+  const last = Math.max(cache?.attemptedAt ?? 0, cache?.fetchedAt ?? 0, input.localAttemptedAt ?? 0);
+  // A window that has reset makes the numbers wrong, so wait no longer than the focus gate for new ones.
+  const minAge = resetPassed(cache?.snapshot, now) ? Math.min(input.minAgeMs, FOCUS_STALE_MS) : input.minAgeMs;
+  if (last > 0 && last <= now && now - last < minAge) return { action: "fresh", until: last + minAge };
   return { action: "fetch" };
 }
 
@@ -95,12 +111,18 @@ export async function writeUsageCache(data: UsageCacheFile, file = usageCachePat
   }
 }
 
-/** Read, change, write; the change sees the latest contents so windows do not clobber each other's fields. */
+/**
+ * Read, change, write; the change sees the latest contents. Result writes happen under the fetch lock;
+ * whatever else writes, an account switch's epoch and a rate limit never go backwards.
+ */
 export async function updateUsageCache(
   change: (cur: UsageCacheFile) => UsageCacheFile,
   file = usageCachePath(),
 ): Promise<UsageCacheFile> {
-  const next = change((await readUsageCache(file)) ?? {});
+  const cur = (await readUsageCache(file)) ?? {};
+  const next = change(cur);
+  const epoch = Math.max(cur.credentialsEpoch ?? 0, next.credentialsEpoch ?? 0);
+  if (epoch > 0) next.credentialsEpoch = epoch;
   await writeUsageCache(next, file);
   return next;
 }
@@ -126,4 +148,24 @@ export function watchUsageCache(onChange: () => void, file = usageCachePath(), d
     if (timer) clearTimeout(timer);
     watcher?.close();
   };
+}
+
+/**
+ * Wait until the fetch lock `id` is released (true), `deadline` passes or `cancelled` turns true
+ * (false). `holderId` reads the current holder's id.
+ */
+export async function waitForLockRelease(
+  id: string,
+  deadline: number,
+  holderId: () => string | undefined,
+  opts: { pollMs?: number; now?: () => number; cancelled?: () => boolean } = {},
+): Promise<boolean> {
+  const now = opts.now ?? Date.now;
+  const pollMs = opts.pollMs ?? LOCK_POLL_MS;
+  for (;;) {
+    if (opts.cancelled?.()) return false;
+    if (holderId() !== id) return true;
+    if (now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - now()))));
+  }
 }

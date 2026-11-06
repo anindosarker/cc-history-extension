@@ -2,18 +2,14 @@ import * as vscode from "vscode";
 import { CredentialsCache } from "./credentials";
 import { DEFAULT_DISPLAY_SETTINGS, type UsageDisplaySettings } from "./format";
 import { PollEngine, type UsageFailure, type UsageState } from "./pollEngine";
-import { intervalMs, manualWaitUntil, usageDisabledByEnv } from "./schedule";
-import {
-  cacheDecision,
-  readUsageCache,
-  updateUsageCache,
-  usageCachePath,
-  watchUsageCache,
-  type UsageCacheFile,
-} from "./sharedCache";
+import { fileLeaseDeps, HEARTBEAT_MS, LeaderLease } from "./leader";
+import { nextPollDelay, UsageRefresher, type RefreshSource } from "./refresher";
+import { intervalMs, usageDisabledByEnv } from "./schedule";
+import { FetchLock, fileLockDeps } from "./fetchLock";
+import { cacheDecision, readUsageCache, updateUsageCache, usageCachePath, waitForLockRelease, watchUsageCache } from "./sharedCache";
 import { fetchUsage } from "./usageClient";
 
-export type { UsageFailure, UsageState };
+export type { RefreshSource, UsageFailure, UsageState };
 export { usageDisabledByEnv };
 
 export interface UsageSettings extends UsageDisplaySettings {
@@ -21,8 +17,6 @@ export interface UsageSettings extends UsageDisplaySettings {
   intervalMs: number;
   showInStatusBar: boolean;
 }
-
-export type RefreshSource = "auto" | "manual";
 
 function clampPct(v: unknown, fallback: number): number {
   if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
@@ -54,27 +48,24 @@ export function readUsageSettings(): UsageSettings {
 }
 
 /**
- * Polls the usage endpoint on an interval, once per machine: every window shares a cache file and
- * only fetches when nobody fetched within the interval. Pauses while the window is unfocused and
- * looks again when focus returns; the engine decides the delay after each attempt (see pollEngine).
- * Manual refreshes are limited to one per minute and 429s back off hard (see schedule).
+ * Polls the usage endpoint once per machine. One window holds the leader lease (leader.ts) and runs
+ * the background poll; the others run no poll timer and render what it writes to usage.json. Any
+ * window refreshes on focus or panel open when the numbers are five minutes old, and on a manual
+ * click right away, through the shared fetch lock. Only a server Retry-After holds a click back.
  */
 export class UsagePoller implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<UsageState>();
   readonly onDidChange = this.changeEmitter.event;
   private readonly disposables: vscode.Disposable[] = [];
   private timer: NodeJS.Timeout | undefined;
-  private inFlight: Promise<void> | undefined;
+  private heartbeat: NodeJS.Timeout | undefined;
+  private readonly lease = new LeaderLease(fileLeaseDeps());
   private settings = readUsageSettings();
-  private focused = vscode.window.state.focused;
   private disposed = false;
   // Token lives here only; re-read near expiry or after the server rejects it.
   private readonly credentials = new CredentialsCache();
   private readonly engine: PollEngine;
-  private nextDelayMs = this.settings.intervalMs;
-  private lastManualAt: number | undefined;
-  // Set after an account switch: the next run fetches even if a snapshot (of the old account) is fresh.
-  private forceFetch = false;
+  private readonly refresher: UsageRefresher;
   private readonly cacheFile = usageCachePath();
   private stopWatching: (() => void) | undefined;
 
@@ -89,12 +80,31 @@ export class UsagePoller implements vscode.Disposable {
       now: () => Date.now(),
       log: (line) => this.log(line),
     });
+    const lock = new FetchLock(fileLockDeps());
+    this.refresher = new UsageRefresher({
+      engine: this.engine,
+      lock,
+      waitForRelease: (id, deadline) => waitForLockRelease(id, deadline, () => lock.holder()?.id, { cancelled: () => this.disposed }),
+      cancelled: () => this.disposed,
+      invalidateCredentials: () => this.credentials.invalidate(),
+      readCache: () => readUsageCache(this.cacheFile),
+      updateCache: async (change) => {
+        try {
+          await updateUsageCache(change, this.cacheFile);
+        } catch (err) {
+          this.log(`could not write ${this.cacheFile}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      },
+      now: () => Date.now(),
+      intervalMs: () => this.settings.intervalMs,
+      log: (line) => this.log(line),
+      onChange: () => this.emit(),
+    });
     this.disposables.push(
       vscode.window.onDidChangeWindowState((s) => {
-        const was = this.focused;
-        this.focused = s.focused;
-        if (s.focused && !was) void this.refresh("auto");
-        if (!s.focused) this.clearTimer();
+        if (!s.focused || !this.settings.enabled) return;
+        this.leaseTick();
+        void this.refresh("focus");
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (!e.affectsConfiguration("ccHistory.usage")) return;
@@ -105,10 +115,16 @@ export class UsagePoller implements vscode.Disposable {
           this.emit();
           return;
         }
-        this.engine.reset();
-        if (this.settings.enabled) void this.refresh("auto");
-        else {
+        if (this.settings.enabled) {
+          this.startWatching();
+          this.startHeartbeat();
+          void this.refresh("auto");
+        } else {
           this.clearTimer();
+          this.stopHeartbeat();
+          this.stopWatching?.();
+          this.stopWatching = undefined;
+          this.lease.release();
           this.emit();
         }
       }),
@@ -123,127 +139,91 @@ export class UsagePoller implements vscode.Disposable {
     return this.engine.state;
   }
 
-  start(): void {
-    if (!this.settings.enabled) return;
-    this.stopWatching = watchUsageCache(() => void this.onCacheChanged(), this.cacheFile);
-    void this.refresh("auto");
+  /** True while this window holds the leader lease and runs the background poll. */
+  get isLeader(): boolean {
+    return this.lease.isLeader;
   }
 
-  /** Another window wrote the cache: take its snapshot or backoff without fetching. */
+  start(): void {
+    if (!this.settings.enabled) return;
+    this.startWatching();
+    this.startHeartbeat();
+    // Leader or not, show what is already in usage.json and fetch when it is old.
+    void this.refresh(this.lease.isLeader ? "auto" : "focus");
+  }
+
+  private startWatching(): void {
+    if (this.stopWatching) return;
+    this.stopWatching = watchUsageCache(() => void this.onCacheChanged(), this.cacheFile);
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeat) return;
+    this.leaseTick();
+    this.heartbeat = setInterval(() => this.leaseTick(), HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = undefined;
+  }
+
+  /** Renew or take the lease; start the poll timer on becoming leader, stop it on losing the lease. */
+  private leaseTick(): void {
+    if (this.disposed || !this.settings.enabled) return;
+    const was = this.lease.isLeader;
+    const now = this.lease.tick();
+    if (now === was) return;
+    this.log(`${new Date().toISOString()} ${now ? "this window now runs the usage poll" : "another window runs the usage poll"} (pid ${process.pid})`);
+    if (now) void this.refresh("auto");
+    else this.clearTimer();
+  }
+
+  /** Another window wrote the cache: take its snapshot, error or Retry-After and re-time the next poll. */
   private async onCacheChanged(): Promise<void> {
-    if (this.disposed || !this.settings.enabled || this.inFlight) return;
+    if (this.disposed || !this.settings.enabled || this.refresher.busy) return;
     const cache = await readUsageCache(this.cacheFile);
-    if (!cache || !this.engine.adopt(cache)) return;
-    this.emit();
+    if (!cache) return;
+    if (this.refresher.observe(cache)) this.emit();
     const now = Date.now();
-    const d = cacheDecision({ cache, now, intervalMs: this.settings.intervalMs, manual: false });
+    const d = cacheDecision({ cache, now, minAgeMs: this.settings.intervalMs });
     if (d.action !== "fetch") {
-      this.nextDelayMs = Math.max(0, d.until - now);
+      this.refresher.nextDelayMs = Math.max(0, d.until - now);
       this.schedule();
     }
   }
 
   /**
-   * The signed-in account may have changed (after `claude auth login`): drop the cached token, forget
-   * failure and manual-gap state, and fetch now instead of trusting the old account's snapshot.
+   * The signed-in account may have changed (after `claude auth login`): drop the cached token and
+   * fetch now instead of trusting the old account's snapshot or Retry-After.
    */
   credentialsChanged(): void {
     if (this.disposed) return;
-    this.credentials.invalidate();
-    this.engine.reset();
-    this.lastManualAt = undefined;
-    this.forceFetch = true;
-    void (this.inFlight ?? Promise.resolve()).then(() => this.refresh("manual"));
+    // Every window sees the switch through usage.json; a fetch in flight here discards its result.
+    void this.refresher
+      .switchAccount()
+      .then(() => this.refresher.settled())
+      .then(() => {
+        this.refresher.force();
+        return this.refresh("manual");
+      });
   }
 
-  /**
-   * Poll now, unless something says not to: the manual gap, another window's fresh snapshot, a 429
-   * backoff, another window's fetch in progress, or the pause. Concurrent calls share the in-flight run.
-   */
+  /** See RefreshSource. Concurrent calls share the run in flight. */
   refresh(source: RefreshSource = "auto"): Promise<void> {
     if (!this.settings.enabled || this.disposed) return Promise.resolve();
-    if (this.inFlight) return this.inFlight;
-    const now = Date.now();
-    if (source === "manual") {
-      const until = manualWaitUntil(this.lastManualAt, now);
-      if (until !== undefined) {
-        this.engine.state = { ...this.engine.state, manualWaitUntil: until };
-        this.emit();
-        return Promise.resolve();
-      }
-      this.lastManualAt = now;
-      this.engine.resume();
-    } else if (this.engine.state.paused) {
-      return Promise.resolve();
-    }
     this.clearTimer();
-    this.inFlight = this.run(source).finally(() => {
-      this.inFlight = undefined;
-      this.emit();
-      this.schedule();
-    });
-    return this.inFlight;
-  }
-
-  private async run(source: RefreshSource): Promise<void> {
-    const now = Date.now();
-    const { manualWaitUntil: _w, ...rest } = this.engine.state;
-    this.engine.state = rest;
-    const forced = this.forceFetch;
-    this.forceFetch = false;
-    const cache = await readUsageCache(this.cacheFile);
-    if (cache && !forced) this.engine.adopt(cache);
-    // A forced run ignores snapshot freshness but still respects another window's lock and a 429 backoff.
-    const { fetchedAt: _old, ...withoutSnapshot } = cache ?? {};
-    const d = cacheDecision({
-      cache: forced ? withoutSnapshot : cache,
-      now,
-      intervalMs: this.settings.intervalMs,
-      manual: source === "manual",
-      localFetchedAt: forced ? undefined : this.engine.state.snapshot?.fetchedAt,
-    });
-    if (d.action !== "fetch") {
-      this.nextDelayMs = Math.max(0, d.until - now);
-      if (d.action === "wait") {
-        this.engine.state = { ...this.engine.state, nextAllowedAt: d.until };
-        if (source === "manual") this.engine.state = { ...this.engine.state, manualWaitUntil: d.until };
-      }
-      this.log(`${new Date(now).toISOString()} ${describeDecision(d, now)}`);
-      return;
-    }
-    this.engine.state = { ...this.engine.state, refreshing: true };
-    this.emit();
-    await this.writeCache((c) => ({ ...c, fetchingSince: now }));
-    const outcome = await this.engine.pollOnce(this.settings.intervalMs);
-    this.nextDelayMs = outcome.delayMs;
-    await this.writeCache((c) => {
-      const { fetchingSince: _f, ...keep } = c;
-      if (outcome.state.snapshot && !outcome.state.error) {
-        const { nextAllowedAt: _n, lastError: _e, ...fresh } = keep;
-        return { ...fresh, fetchedAt: outcome.state.snapshot.fetchedAt, snapshot: outcome.state.snapshot, plan: outcome.state.plan };
-      }
-      const next: UsageCacheFile = { ...keep };
-      if (outcome.state.error) {
-        const { reason, message, status, at } = outcome.state.error;
-        next.lastError = { reason, message, ...(status !== undefined ? { status } : {}), at };
-      }
-      if (outcome.rateLimited) next.nextAllowedAt = outcome.rateLimited.nextAllowedAt;
-      return next;
-    });
-  }
-
-  private async writeCache(change: (c: UsageCacheFile) => UsageCacheFile): Promise<void> {
-    try {
-      await updateUsageCache(change, this.cacheFile);
-    } catch (err) {
-      this.log(`could not write ${this.cacheFile}: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    const p = this.refresher.refresh(source);
+    void p.finally(() => this.schedule());
+    return p;
   }
 
   private schedule(): void {
     this.clearTimer();
-    if (this.disposed || !this.settings.enabled || !this.focused || this.engine.state.paused) return;
-    this.timer = setTimeout(() => void this.refresh("auto"), this.nextDelayMs);
+    if (this.disposed || !this.settings.enabled || this.refresher.busy) return;
+    // Followers run no poll timer; the leader's writes reach them through the cache watcher.
+    const delay = nextPollDelay(this.engine.state, this.refresher.nextDelayMs, this.lease.isLeader, Date.now());
+    if (delay !== undefined) this.timer = setTimeout(() => void this.refresh("auto"), delay);
   }
 
   private clearTimer(): void {
@@ -258,20 +238,10 @@ export class UsagePoller implements vscode.Disposable {
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
+    this.stopHeartbeat();
+    this.lease.release();
     this.stopWatching?.();
     for (const d of this.disposables) d.dispose();
     this.changeEmitter.dispose();
-  }
-}
-
-function describeDecision(d: Exclude<ReturnType<typeof cacheDecision>, { action: "fetch" }>, now: number): string {
-  const inS = `${Math.round((d.until - now) / 1000)}s`;
-  switch (d.action) {
-    case "use-cache":
-      return `using the usage snapshot another window fetched, next poll in ${inS}`;
-    case "wait":
-      return `429 backoff in force, no fetch for ${inS}`;
-    case "skip-locked":
-      return `another window is fetching usage, looking again in ${inS}`;
   }
 }

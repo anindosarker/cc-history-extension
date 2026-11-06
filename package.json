@@ -2,7 +2,7 @@
   "name": "cc-history",
   "displayName": "CC History",
   "description": "Claude Code session history: browse, search, diff and export every session. No time cutoff.",
-  "version": "0.6.1",
+  "version": "1.0.0",
   "publisher": "anindosarker",
   "license": "MIT",
   "repository": {
@@ -359,9 +359,9 @@
         },
         "ccHistory.usage.intervalSeconds": {
           "type": "number",
-          "default": 300,
-          "minimum": 120,
-          "description": "Seconds between usage polls while the window is focused (at least 120). Polling pauses when VS Code is not focused, and every window on the machine shares one fetch per interval."
+          "default": 900,
+          "minimum": 300,
+          "description": "Seconds between background usage polls (at least 300). Only one VS Code window polls and the others share its result; focusing a window or opening the usage panel also refreshes when the numbers are 5 minutes old."
         },
         "ccHistory.usage.showInStatusBar": {
           "type": "boolean",

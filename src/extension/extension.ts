@@ -17,6 +17,7 @@ import { PinStore, SessionNode, SessionTreeProvider, type TreeNode } from "./tre
 import { UsageStatusBar } from "./usage/statusBar";
 import { UsagePanelManager } from "./usage/usagePanel";
 import { UsagePoller } from "./usage/usagePoller";
+import { retryUntilText } from "../shared/usage";
 
 export function activate(context: vscode.ExtensionContext): void {
   const indexer = new Indexer(context);
@@ -57,7 +58,11 @@ export function activate(context: vscode.ExtensionContext): void {
     usagePanel,
     usageLog,
     vscode.commands.registerCommand("ccHistory.showUsageLog", () => usageLog.show(true)),
-    vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh("manual")),
+    vscode.commands.registerCommand("ccHistory.refreshUsage", async () => {
+      await usage.refresh("manual");
+      const blocked = retryUntilText(usage.state.retryUntil, Date.now());
+      if (blocked) void vscode.window.showInformationMessage(`Claude Code usage: ${blocked}.`);
+    }),
     vscode.commands.registerCommand("ccHistory.openUsage", () => usagePanel.open()),
     vscode.commands.registerCommand("ccHistory.switchAccount", () => {
       context.subscriptions.push(switchAccount(() => usage.credentialsChanged()));

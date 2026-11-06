@@ -17,6 +17,7 @@ export class UsagePanelManager implements vscode.Disposable {
   open(): void {
     if (this.panel) {
       this.panel.reveal();
+      void this.poller.refresh("focus");
       return;
     }
     const webviewRoot = vscode.Uri.joinPath(this.context.extensionUri, "dist", "webview");
@@ -36,7 +37,8 @@ export class UsagePanelManager implements vscode.Disposable {
       this.poller.onDidChange(() => this.push()),
       panel.onDidDispose(() => this.closed()),
     );
-    void this.poller.refresh("auto");
+    // Opening the panel refreshes only when the numbers are five minutes old.
+    void this.poller.refresh("focus");
   }
 
   private onMessage(m: UsageWebviewToHost): void {

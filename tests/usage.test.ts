@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CredentialsCache, parseCredentials, type Credentials } from "../src/extension/usage/credentials";
+import { CredentialsCache, parseClaudeAccount, parseCredentials, readCredentials, type Credentials } from "../src/extension/usage/credentials";
+import { accountLabel } from "../src/shared/usage";
 import {
   colorDecision,
   DEFAULT_DISPLAY_SETTINGS,
@@ -13,7 +14,7 @@ import {
   tooltipLines,
   type UsageDisplaySettings,
 } from "../src/extension/usage/format";
-import { intervalMs, MAX_BACKOFF_MS, nextDelayMs } from "../src/extension/usage/schedule";
+import { intervalMs, rateLimitDelayMs } from "../src/extension/usage/schedule";
 import { formatClock } from "../src/shared/time";
 import { fetchUsage, parseUsage, UsageError, USAGE_URL } from "../src/extension/usage/usageClient";
 
@@ -148,21 +149,45 @@ describe("credentials parsing", () => {
     expect(parseCredentials("not json")).toBeUndefined();
     expect(parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: "" } }))).toBeUndefined();
   });
+
+  it("takes only the email and organization name from ~/.claude.json", async () => {
+    const raw = JSON.stringify({
+      oauthAccount: {
+        accountUuid: "u",
+        emailAddress: "ai@example.com",
+        organizationUuid: "o",
+        organizationName: "Example",
+        organizationRole: "admin",
+      },
+      projects: { "/x": { history: [] } },
+      userID: "secret-ish",
+    });
+    expect(parseClaudeAccount(raw)).toEqual({ email: "ai@example.com", organization: "Example" });
+    expect(parseClaudeAccount(JSON.stringify({ oauthAccount: { emailAddress: "a@b.c" } }))).toEqual({ email: "a@b.c" });
+    expect(parseClaudeAccount(JSON.stringify({ projects: {} }))).toBeUndefined();
+    expect(parseClaudeAccount(JSON.stringify({ oauthAccount: { emailAddress: "", organizationName: 5 } }))).toBeUndefined();
+    expect(parseClaudeAccount("not json")).toBeUndefined();
+    expect(accountLabel({ email: "ai@example.com", organization: "Example" })).toBe("ai@example.com · Example");
+    expect(accountLabel({ email: "ai@example.com" })).toBe("ai@example.com");
+    expect(accountLabel(undefined)).toBeUndefined();
+    // Read together with the token; a missing ~/.claude.json leaves the account out.
+    const entry = JSON.stringify({ claudeAiOauth: { accessToken: "t" } });
+    const withAccount = await readCredentials("linux", { keychain: async () => undefined, file: async () => entry, account: async () => raw });
+    expect(withAccount?.account).toEqual({ email: "ai@example.com", organization: "Example" });
+    const without = await readCredentials("linux", { keychain: async () => undefined, file: async () => entry, account: async () => undefined });
+    expect(without).toEqual({ accessToken: "t", source: "file" });
+  });
 });
 
 describe("poll schedule", () => {
-  it("clamps the interval and backs off exponentially up to five minutes", () => {
-    expect(intervalMs(undefined)).toBe(300_000);
-    expect(intervalMs(10)).toBe(120_000);
-    expect(intervalMs(90.9)).toBe(120_000);
+  it("defaults to 15 minutes, never under 5, and a 429 waits the longer of Retry-After and the interval", () => {
+    expect(intervalMs(undefined)).toBe(900_000);
+    expect(intervalMs(10)).toBe(300_000);
+    expect(intervalMs(290.9)).toBe(300_000);
     expect(intervalMs(600.9)).toBe(600_000);
-    expect(nextDelayMs(60_000, 0)).toBe(60_000);
-    expect(nextDelayMs(60_000, 1)).toBe(120_000);
-    expect(nextDelayMs(60_000, 2)).toBe(240_000);
-    expect(nextDelayMs(60_000, 3)).toBe(MAX_BACKOFF_MS);
-    expect(MAX_BACKOFF_MS).toBe(300_000);
-    expect(nextDelayMs(60_000, 4)).toBe(MAX_BACKOFF_MS);
-    expect(nextDelayMs(60_000, 50)).toBe(MAX_BACKOFF_MS);
+    expect(rateLimitDelayMs(undefined, 900_000)).toBe(900_000);
+    expect(rateLimitDelayMs(60_000, 900_000)).toBe(900_000);
+    expect(rateLimitDelayMs(3_600_000, 900_000)).toBe(3_600_000);
   });
 });
 

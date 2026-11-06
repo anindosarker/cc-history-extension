@@ -1,8 +1,18 @@
-import { ERROR_REASON_TEXT, formatAgo, formatResetAt, pct, relativeDuration } from "../../shared/usage";
+import {
+  accountLabel,
+  ERROR_REASON_TEXT,
+  formatAgo,
+  formatResetAt,
+  heldText,
+  pct,
+  readingExpired,
+  relativeDuration,
+  retryUntilText,
+} from "../../shared/usage";
 import type { UsageFailure, UsageState } from "./pollEngine";
 import type { ScopedLimit, UsageLimit, UsageSnapshot } from "./usageClient";
 
-export { ERROR_REASON_TEXT, formatAgo, formatResetAt, pct, relativeDuration };
+export { ERROR_REASON_TEXT, formatAgo, formatResetAt, heldText, pct, readingExpired, relativeDuration, retryUntilText };
 
 export const WARN_PCT = 75;
 export const ERROR_PCT = 90;
@@ -148,12 +158,14 @@ export const STALE_INTERVALS = 2;
 export const TOKEN_HINT_AFTER_MS = 10 * 60_000;
 export const TOKEN_HINT = "Open or use Claude Code to refresh its login";
 export const STALE_MARKER = " ~";
-export const PAUSED_TEXT = "Paused after repeated 429, click Refresh to resume";
+/** Status bar icon while a refresh is under way. */
+export const REFRESHING_ICON = "$(sync~spin)";
 
-/** "Please wait 42s" while a manual refresh is rate limited, or undefined. */
-export function waitText(state: Pick<UsageState, "manualWaitUntil">, now: number): string | undefined {
-  if (state.manualWaitUntil === undefined || state.manualWaitUntil <= now) return undefined;
-  return `Please wait ${Math.max(1, Math.ceil((state.manualWaitUntil - now) / 1000))}s`;
+/** The snapshot, unless it is over an hour old or one of its windows has reset since (then it is wrong, not just old). */
+export function usableSnapshot(snap: UsageSnapshot | undefined, now: number): UsageSnapshot | undefined {
+  if (!snap) return undefined;
+  const limits = [snap.fiveHour, snap.weekly, ...snap.scoped].filter((l): l is UsageLimit => l !== undefined);
+  return readingExpired(snap.fetchedAt, limits, now) ? undefined : snap;
 }
 
 export function isStale(fetchedAt: number, now: number, intervalMs: number): boolean {
@@ -191,30 +203,34 @@ export interface StatusModel {
  * reading has ever arrived this session.
  */
 export function statusModel(state: UsageState, settings: UsageSettingsLike, now: number): StatusModel {
-  const { snapshot, error } = state;
-  const wait = waitText(state, now);
+  const { error } = state;
+  const snapshot = usableSnapshot(state.snapshot, now);
+  const retry = retryUntilText(state.retryUntil, now);
+  const account = accountLabel(state.account);
   if (!snapshot) {
     const lines = error
       ? [`Claude Code usage unavailable: ${failureText(error)}`, `Last attempt ${formatAgo(now - error.at)}`]
-      : ["Fetching Claude Code usage…"];
-    if (state.paused) lines.unshift(PAUSED_TEXT);
-    if (wait) lines.push(wait);
+      : [state.snapshot ? "Usage numbers are out of date, fetching new ones…" : "Fetching Claude Code usage…"];
+    if (retry) lines.push(retry);
     if (error && tokenHintDue(error, now)) lines.push(TOKEN_HINT);
-    return { text: state.refreshing && !error ? "$(sparkle) usage …" : STATUS_ERROR_TEXT, lines, level: undefined, stale: false };
+    if (account) lines.push(`Account: ${account}`);
+    const text = state.refreshing ? `${REFRESHING_ICON} usage …` : error ? STATUS_ERROR_TEXT : "$(sparkle) usage …";
+    return { text, lines, level: undefined, stale: false };
   }
   const color = colorDecision(snapshot, settings);
-  // A paused widget always shows its reading as stale: nothing will refresh it on its own.
-  const stale = state.paused === true || isStale(snapshot.fetchedAt, now, settings.intervalMs);
-  const text = statusBarItemText(snapshot, settings) + (stale ? STALE_MARKER : "");
+  const stale = isStale(snapshot.fetchedAt, now, settings.intervalMs);
+  let text = statusBarItemText(snapshot, settings) + (stale ? STALE_MARKER : "");
+  if (state.refreshing) text = text.replace(/^\$\([^)]*\)/, REFRESHING_ICON);
   const lines: string[] = [];
-  if (state.paused) lines.push(PAUSED_TEXT);
-  if (error) {
-    lines.push(`Stale: last update ${formatAgo(now - snapshot.fetchedAt)}`);
-    lines.push(failureText(error));
+  const held = heldText(error, snapshot.fetchedAt, now);
+  if (held && error) {
+    lines.push(held);
+    if (error.status !== 429) lines.push(failureText(error));
     if (tokenHintDue(error, now)) lines.push(TOKEN_HINT);
   }
+  if (retry) lines.push(retry);
   lines.push(...tooltipLines(snapshot, { now, plan: state.plan, color }));
-  if (wait) lines.push(wait);
+  if (account) lines.push(`Account: ${account}`);
   return { text, lines, level: color.level, stale };
 }
 

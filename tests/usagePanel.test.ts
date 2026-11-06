@@ -54,6 +54,8 @@ describe("usage view mapping", () => {
         plan: "team",
         refreshing: false,
       },
+      undefined,
+      now,
     );
     expect(view.fetchedAt).toBe(now - 60_000);
     expect(view.limits).toHaveLength(1);

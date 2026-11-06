@@ -5,6 +5,7 @@ import {
   type UsageThresholds,
   type UsageView,
 } from "../../shared/usage";
+import { usableSnapshot } from "./format";
 import type { UsageSnapshot } from "./usageClient";
 import type { UsageState } from "./usagePoller";
 
@@ -29,16 +30,21 @@ export function limitRows(snap: UsageSnapshot): UsageLimitView[] {
   return rows.map((r) => (r.resetsAt === undefined ? { key: r.key, label: r.label, pct: r.pct, windowMs: r.windowMs } : r));
 }
 
-export function toUsageView(state: UsageState, thresholds?: UsageThresholds): UsageView {
+export function toUsageView(state: UsageState, thresholds?: UsageThresholds, now = Date.now()): UsageView {
+  // A reading over an hour old, or one whose window has reset, is dropped rather than shown.
+  const snapshot = usableSnapshot(state.snapshot, now);
   const view: UsageView = {
-    limits: state.snapshot ? limitRows(state.snapshot) : [],
+    limits: snapshot ? limitRows(snapshot) : [],
     refreshing: state.refreshing,
   };
   if (thresholds) view.thresholds = thresholds;
-  if (state.snapshot) view.fetchedAt = state.snapshot.fetchedAt;
+  if (snapshot) view.fetchedAt = snapshot.fetchedAt;
   if (state.plan) view.plan = state.plan;
-  if (state.error) view.error = { reason: state.error.reason, message: state.error.message, at: state.error.at };
-  if (state.paused) view.paused = true;
-  if (state.manualWaitUntil !== undefined) view.waitUntil = state.manualWaitUntil;
+  if (state.account) view.account = state.account;
+  if (state.error) {
+    view.error = { reason: state.error.reason, message: state.error.message, at: state.error.at };
+    if (state.error.status !== undefined) view.error.status = state.error.status;
+  }
+  if (state.retryUntil !== undefined && state.retryUntil > now) view.retryUntil = state.retryUntil;
   return view;
 }

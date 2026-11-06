@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { UsageAccount } from "../../shared/usage";
 
 /**
  * The OAuth token Claude Code keeps for claude.ai. It is read once per token lifetime, kept only
@@ -16,6 +17,8 @@ export interface Credentials {
   rateLimitTier?: string;
   /** Where the entry came from, for the log only. */
   source?: CredentialSource;
+  /** Signed-in email and organization, read alongside the token from ~/.claude.json. */
+  account?: UsageAccount;
 }
 
 export type CredentialSource = "keychain" | "file";
@@ -25,6 +28,30 @@ const KEYCHAIN_TIMEOUT_MS = 5_000;
 
 export function credentialsFilePath(home = os.homedir()): string {
   return path.join(home, ".claude", ".credentials.json");
+}
+
+export function claudeJsonPath(home = os.homedir()): string {
+  return path.join(home, ".claude.json");
+}
+
+/**
+ * The signed-in email and organization name from ~/.claude.json's oauthAccount block. Only these two
+ * strings are taken; everything else in the file is ignored. Undefined when neither is there.
+ */
+export function parseClaudeAccount(raw: string): UsageAccount | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const acct = typeof data === "object" && data !== null ? (data as { oauthAccount?: unknown }).oauthAccount : undefined;
+  if (typeof acct !== "object" || acct === null) return undefined;
+  const a = acct as Record<string, unknown>;
+  const out: UsageAccount = {};
+  if (typeof a.emailAddress === "string" && a.emailAddress) out.email = a.emailAddress;
+  if (typeof a.organizationName === "string" && a.organizationName) out.organization = a.organizationName;
+  return out.email || out.organization ? out : undefined;
 }
 
 /** Pull the claude.ai OAuth block out of the credentials JSON; undefined when there is none. */
@@ -69,9 +96,15 @@ async function readFile(p: string): Promise<string | undefined> {
 export interface CredentialSources {
   keychain: () => Promise<string | undefined>;
   file: () => Promise<string | undefined>;
+  /** ~/.claude.json, for the account label only. */
+  account?: () => Promise<string | undefined>;
 }
 
-const DEFAULT_SOURCES: CredentialSources = { keychain: readKeychain, file: () => readFile(credentialsFilePath()) };
+const DEFAULT_SOURCES: CredentialSources = {
+  keychain: readKeychain,
+  file: () => readFile(credentialsFilePath()),
+  account: () => readFile(claudeJsonPath()),
+};
 
 /** Of two entries, the one that expires later; an entry without an expiry loses to one with. */
 export function pickLaterCredentials(a: Credentials | undefined, b: Credentials | undefined): Credentials | undefined {
@@ -94,9 +127,11 @@ export async function readCredentials(
   sources: CredentialSources = DEFAULT_SOURCES,
 ): Promise<Credentials | undefined> {
   const file = withSource(await sources.file(), "file");
-  if (platform !== "darwin") return file;
-  const keychain = withSource(await sources.keychain(), "keychain");
-  return pickLaterCredentials(keychain, file);
+  const picked = platform !== "darwin" ? file : pickLaterCredentials(withSource(await sources.keychain(), "keychain"), file);
+  if (!picked || !sources.account) return picked;
+  const raw = await sources.account();
+  const account = raw ? parseClaudeAccount(raw) : undefined;
+  return account ? { ...picked, account } : picked;
 }
 
 /** Reuse a read token until this close to its expiry, then read again. */

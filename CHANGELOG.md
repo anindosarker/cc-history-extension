@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
 
+- Usage refresh reworked: clicking Refresh (or Retry, or "Refresh Usage") always fetches new numbers. There is no one-per-minute limit any more. If another VS Code window is already fetching, the click waits for that window's result and shows it. Only a rate limit after a `429` can hold a click back (the server's `Retry-After`, at least one minute), and the panel and status bar say until when.
+- Only one VS Code window polls usage; the others share its result. Windows take turns through an exclusive lock file, so two windows never fetch at the same moment.
+- After Switch Claude Account, every open window drops the old account's token and numbers, and a fetch still running with the old token is thrown away.
+- Background polling is every 15 minutes by default (`ccHistory.usage.intervalSeconds`, at least 300). Focusing a window or opening the usage panel refreshes when the numbers are at least 5 minutes old.
+- A `429 Too Many Requests` answer keeps the last numbers on screen, says "Rate limited, showing numbers from 12m ago", and holds every window for the server's `Retry-After` (at least one minute), and tries again after the poll interval or that `Retry-After`, whichever is longer. The 15 minute to 2 hour backoff ladder and the pause after three 429s are gone. Other failures say "Last refresh failed, showing numbers from 12m ago".
+- Usage numbers over an hour old, or from a window that has reset since, are dropped instead of shown as current.
+- A rejected or expired token is re-read on the next attempt instead of being retried every 30 seconds.
+- The refresh button spins from the click until the result arrives, and the status bar icon spins while a refresh runs.
+- Usage panel bars show their level colour at any percentage: the track is tinted with the level colour and the used part is solid.
+- The usage panel header and the status bar tooltip show the signed-in account's email and organization, read from `~/.claude.json`.
+- Hovering a usage bar or its pace marker explains it, with how much of that window has passed.
 - The usage panel drops the "This week" summary of sessions, messages and top projects.
 - Usage panel bars are coloured by level: green below the warning threshold, then the same warning and error colours as the status bar.
 - Switch Claude Account: the account icon in the Sessions view title (or the "Claude Code History: Switch Claude Account" command) opens a "Claude Login" terminal running `claude auth login`. When you close that terminal, the usage widget re-reads the credentials and fetches usage for the new account. The usage panel (click the usage status bar item) has a "Switch account" button in its header, and also in the error box when credentials are missing or expired.

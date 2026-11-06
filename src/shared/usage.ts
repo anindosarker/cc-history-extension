@@ -22,6 +22,8 @@ export interface UsageLimitView {
 export interface UsageFailureView {
   reason: UsageErrorReason;
   message: string;
+  /** HTTP status for "http" failures. */
+  status?: number;
   at: number;
 }
 
@@ -46,27 +48,54 @@ export function barLevel(limit: { key: string; pct: number }, t: UsageThresholds
   return undefined;
 }
 
+/** Who is signed in, from oauthAccount in ~/.claude.json. Only these two strings are ever read. */
+export interface UsageAccount {
+  email?: string;
+  organization?: string;
+}
+
+/** "ai@example.com · Example", either part alone, or undefined when neither is known. */
+export function accountLabel(a: UsageAccount | undefined): string | undefined {
+  const parts = [a?.email, a?.organization].filter((x): x is string => !!x);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 export interface UsageView {
   /** Last good reading, kept while errors come and go. */
   fetchedAt?: number;
   plan?: string;
+  account?: UsageAccount;
   limits: UsageLimitView[];
   error?: UsageFailureView;
   refreshing: boolean;
   /** Absent only from hosts older than the setting; the panel then uses the defaults. */
   thresholds?: UsageThresholds;
-  /** Automatic polling stopped after repeated 429s; Refresh resumes it. */
-  paused?: boolean;
-  /** Refresh is rate limited until this time. */
-  waitUntil?: number;
+  /** After a 429 (Retry-After, at least a minute): no refresh, manual included, before this time. */
+  retryUntil?: number;
 }
 
-export const PAUSED_NOTICE = "Paused after repeated 429, click Refresh to resume";
+/** Numbers older than this are dropped rather than shown as current. */
+export const HOLD_MAX_MS = 3_600_000;
 
-/** "Please wait 42s", or undefined once the wait is over. */
-export function waitLabel(waitUntil: number | undefined, now: number): string | undefined {
-  if (waitUntil === undefined || waitUntil <= now) return undefined;
-  return `Please wait ${Math.max(1, Math.ceil((waitUntil - now) / 1000))}s`;
+/**
+ * A reading is dropped (not shown) once it is over an hour old or any of its windows has reset since:
+ * it would show wrong numbers rather than old ones.
+ */
+export function readingExpired(fetchedAt: number, limits: readonly { resetsAt?: number }[], now: number): boolean {
+  return now - fetchedAt > HOLD_MAX_MS || limits.some((l) => l.resetsAt !== undefined && l.resetsAt <= now);
+}
+
+/** "Rate limited, showing numbers from 12m ago" while numbers are held after a failed refresh. */
+export function heldText(error: { status?: number } | undefined, fetchedAt: number | undefined, now: number): string | undefined {
+  if (!error || fetchedAt === undefined) return undefined;
+  const why = error.status === 429 ? "Rate limited" : "Last refresh failed";
+  return `${why}, showing numbers from ${formatAgo(now - fetchedAt)}`;
+}
+
+/** "Rate limited until 3:42 PM", or undefined once that time has passed. */
+export function retryUntilText(retryUntil: number | undefined, now: number, opts: DateFormatOptions = {}): string | undefined {
+  if (retryUntil === undefined || retryUntil <= now) return undefined;
+  return `Rate limited until ${formatClock(retryUntil, opts)}`;
 }
 
 export type UsageWebviewToHost = { type: "usageRequest" } | { type: "usageRefresh" } | { type: "switchAccount" };
@@ -135,4 +164,12 @@ export function formatResetAt(resetsAt: number, now: number, opts: DateFormatOpt
   const clock = formatClock(rounded, opts);
   const time = diff < DAY_MS ? clock : `${formatWeekday(rounded, opts)} ${clock}`;
   return `${time} (in ${relativeDuration(diff)})`;
+}
+
+/** Tooltip for the pace marker on a bar, with how much of the window has passed. */
+export function paceMarkerText(elapsed: number): string {
+  return (
+    `Pace marker: ${Math.round(elapsed * 100)}% of this window has passed. ` +
+    "Usage left of the line means you're on track to last until the reset; past it means you'll run out early."
+  );
 }

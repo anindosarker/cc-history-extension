@@ -1,5 +1,6 @@
+import type { UsageAccount } from "../../shared/usage";
 import type { Credentials } from "./credentials";
-import { CREDENTIAL_RETRY_MS, nextDelayMs, pausedAfter, rateLimitDelayMs } from "./schedule";
+import { RATE_LIMIT_HOLD_MS, rateLimitDelayMs } from "./schedule";
 import type { UsageCacheFile } from "./sharedCache";
 import { UsageError, type UsageErrorReason, type UsageSnapshot } from "./usageClient";
 
@@ -21,20 +22,18 @@ export interface UsageState {
   error?: UsageFailure;
   /** Plan type and tier from the credentials, like "team (default_claude_max_5x)". */
   plan?: string;
-  /** True while a poll is in flight. */
+  /** Signed-in email and organization. */
+  account?: UsageAccount;
+  /** True while a refresh is under way, including while waiting for another window's fetch. */
   refreshing: boolean;
-  /** Automatic polling stopped after repeated 429s; a manual Refresh resumes it. */
-  paused?: boolean;
-  /** No fetch before this time (429 backoff, this window's or another's). */
-  nextAllowedAt?: number;
-  /** A manual refresh was asked too soon; "Please wait" until this time. */
-  manualWaitUntil?: number;
+  /** After a 429: no fetch, manual included, before this time (Retry-After, at least a minute). */
+  retryUntil?: number;
 }
 
 export interface PollDeps {
   /** Credentials, from the cache unless fresh is set. */
   readCredentials(now: number, opts: { fresh: boolean }): Promise<Credentials | undefined>;
-  /** Drop the cached token after the server rejected it. */
+  /** Drop the cached token so the next attempt reads it again. */
   invalidateCredentials(): void;
   fetchUsage(accessToken: string): Promise<UsageSnapshot>;
   now(): number;
@@ -44,13 +43,13 @@ export interface PollDeps {
 
 export interface PollOutcome {
   state: UsageState;
-  /** How long to wait before the next poll. */
+  /** How long to wait before the next background poll. */
   delayMs: number;
   /** Set when the server answered 429. */
-  rateLimited?: { retryAfterMs?: number; consecutive: number; paused: boolean; nextAllowedAt: number };
+  rateLimited?: { retryAfterMs?: number; retryUntil: number };
 }
 
-/** Missing, expired or rejected tokens: Claude Code fixes these on its own, so they get a short fixed retry. */
+/** Missing, expired or rejected tokens: the next attempt re-reads the credentials. */
 export function isCredentialFailure(reason: UsageErrorReason, status?: number): boolean {
   return reason === "no-credentials" || reason === "token-expired" || (reason === "http" && (status === 401 || status === 403));
 }
@@ -70,43 +69,49 @@ function describe(c: Credentials): string {
 }
 
 /**
- * The poll decision logic with no VS Code or timer dependencies: one call per attempt, returning the
- * next state and the delay to wait. The poller owns timers, focus and settings around it.
+ * One fetch attempt with no VS Code, timer or file dependencies: returns the next state and the delay
+ * before the next background poll. A failure keeps the last good snapshot; every failure waits a
+ * full interval (or the server's longer Retry-After), with no ladder and no pause.
  */
 export class PollEngine {
   state: UsageState = { refreshing: false };
-  private failures = 0;
-  private rateLimits = 0;
 
   constructor(private readonly deps: PollDeps) {}
 
-  /** Consecutive 429s so far. */
-  get consecutiveRateLimits(): number {
-    return this.rateLimits;
-  }
-
-  /** Take over a snapshot another window fetched, when it is newer than ours. Returns true when adopted. */
+  /**
+   * Take over what another window wrote, when it is newer than ours: its snapshot, its latest error
+   * and its Retry-After. Returns true when anything changed.
+   */
   adopt(cache: UsageCacheFile): boolean {
     let changed = false;
     if (cache.snapshot && cache.fetchedAt !== undefined && cache.fetchedAt > (this.state.snapshot?.fetchedAt ?? 0)) {
       const snapshot: UsageSnapshot = { ...cache.snapshot, fetchedAt: cache.fetchedAt };
-      const { error: _dropped, ...rest } = this.state;
-      this.state = { ...rest, snapshot, plan: cache.plan ?? this.state.plan };
-      this.failures = 0;
+      // Plan and account as written: after a switch to an account without them, the old ones must go.
+      const { plan: _p, account: _a, ...rest } = this.state;
+      this.state = { ...rest, snapshot, ...(cache.plan !== undefined ? { plan: cache.plan } : {}), ...(cache.account ? { account: cache.account } : {}) };
+      if (this.state.error && this.state.error.at <= cache.fetchedAt) {
+        const { error: _cleared, ...rest } = this.state;
+        this.state = rest;
+      }
       changed = true;
     }
-    if (cache.nextAllowedAt !== undefined && cache.nextAllowedAt > this.deps.now() && cache.nextAllowedAt !== this.state.nextAllowedAt) {
-      this.state = { ...this.state, nextAllowedAt: cache.nextAllowedAt };
+    const e = cache.lastError;
+    const latestHere = Math.max(this.state.error?.at ?? 0, this.state.snapshot?.fetchedAt ?? 0);
+    if (e && e.at > latestHere) {
+      const since = this.state.error?.since ?? e.at;
+      this.state = { ...this.state, error: { reason: e.reason, message: e.message, ...(e.status !== undefined ? { status: e.status } : {}), at: e.at, since } };
+      changed = true;
+    }
+    if (cache.retryUntil !== undefined && cache.retryUntil > this.deps.now() && cache.retryUntil !== this.state.retryUntil) {
+      this.state = { ...this.state, retryUntil: cache.retryUntil };
       changed = true;
     }
     return changed;
   }
 
-  /** The user clicked Refresh: automatic polling may run again. */
-  resume(): void {
-    if (!this.state.paused) return;
-    const { paused: _p, ...rest } = this.state;
-    this.state = rest;
+  /** Forget everything about the previous account: its numbers, plan, label, error and rate limit. */
+  forgetAccount(): void {
+    this.state = { refreshing: this.state.refreshing };
   }
 
   async pollOnce(intervalMs: number): Promise<PollOutcome> {
@@ -121,57 +126,34 @@ export class PollEngine {
       this.deps.log(describe(creds));
       if (expired(creds, now)) throw new UsageError("token-expired", "Token expired.");
       const snapshot = await this.deps.fetchUsage(creds.accessToken);
-      this.failures = 0;
-      this.rateLimits = 0;
-      this.state = { snapshot, plan: planOf(creds), refreshing: false };
-      const delayMs = intervalMs;
-      this.deps.log(`${new Date(this.deps.now()).toISOString()} poll ok (${summary(snapshot)}), next in ${seconds(delayMs)}`);
-      return { state: this.state, delayMs };
+      this.state = { snapshot, plan: planOf(creds), ...(creds.account ? { account: creds.account } : {}), refreshing: false };
+      this.deps.log(`${new Date(this.deps.now()).toISOString()} poll ok (${summary(snapshot)}), next in ${seconds(intervalMs)}`);
+      return { state: this.state, delayMs: intervalMs };
     } catch (err) {
       const reason: UsageErrorReason = err instanceof UsageError ? err.reason : "network";
       const status = err instanceof UsageError ? err.status : undefined;
       const message = err instanceof Error ? err.message : String(err);
-      if (err instanceof UsageError && err.unauthorized) this.deps.invalidateCredentials();
+      // A rejected, expired or missing token: read the credentials again on the next attempt.
+      if (isCredentialFailure(reason, status)) this.deps.invalidateCredentials();
       const at = this.deps.now();
       const since = this.state.error?.since ?? at;
-      let delayMs: number;
-      let rateLimited: PollOutcome["rateLimited"];
-      if (isCredentialFailure(reason, status)) {
-        // Not our failure to back off from: keep looking for the rotated token on a short cycle.
-        delayMs = CREDENTIAL_RETRY_MS;
-      } else if (status === 429) {
-        this.rateLimits++;
+      const { retryUntil: _old, ...rest } = this.state;
+      this.state = { ...rest, error: { reason, message, ...(status !== undefined ? { status } : {}), at, since }, refreshing: false };
+      if (status === 429) {
         const retryAfterMs = err instanceof UsageError ? err.retryAfterMs : undefined;
-        delayMs = rateLimitDelayMs(retryAfterMs, this.rateLimits);
-        rateLimited = { retryAfterMs, consecutive: this.rateLimits, paused: pausedAfter(this.rateLimits), nextAllowedAt: at + delayMs };
-      } else {
-        this.failures++;
-        delayMs = nextDelayMs(intervalMs, this.failures);
-      }
-      this.state = {
-        ...this.state,
-        error: { reason, message, ...(status !== undefined ? { status } : {}), at, since },
-        refreshing: false,
-      };
-      if (rateLimited) {
-        this.state = { ...this.state, nextAllowedAt: rateLimited.nextAllowedAt, ...(rateLimited.paused ? { paused: true } : {}) };
-        const ra = rateLimited.retryAfterMs === undefined ? "no Retry-After" : `Retry-After ${seconds(rateLimited.retryAfterMs)}`;
-        this.deps.log(
-          `${new Date(at).toISOString()} HTTP 429 Too Many Requests (${ra}), 429 #${rateLimited.consecutive} in a row, ` +
-            (rateLimited.paused ? `automatic polling paused until Refresh is clicked (not before ${seconds(delayMs)})` : `next in ${seconds(delayMs)}`),
-        );
-        return { state: this.state, delayMs, rateLimited };
+        const delayMs = rateLimitDelayMs(retryAfterMs, intervalMs);
+        // Even without Retry-After, a minute's hold keeps repeated clicks off a limited endpoint.
+        const retryUntil = at + Math.max(retryAfterMs ?? 0, RATE_LIMIT_HOLD_MS);
+        this.state = { ...this.state, retryUntil };
+        const ra = retryAfterMs === undefined ? "no Retry-After" : `Retry-After ${seconds(retryAfterMs)}`;
+        this.deps.log(`${new Date(at).toISOString()} HTTP 429 Too Many Requests (${ra}), keeping the last numbers, next in ${seconds(delayMs)}`);
+        return { state: this.state, delayMs, rateLimited: { retryAfterMs, retryUntil } };
       }
       this.deps.log(
-        `${new Date(at).toISOString()} poll failed: ${reason}${status !== undefined ? ` (http ${status})` : ""}, next in ${seconds(delayMs)}`,
+        `${new Date(at).toISOString()} poll failed: ${reason}${status !== undefined ? ` (http ${status})` : ""}, next in ${seconds(intervalMs)}`,
       );
-      return { state: this.state, delayMs };
+      return { state: this.state, delayMs: intervalMs };
     }
-  }
-
-  /** Forget the failure streak, for example when settings change. The 429 streak is kept on purpose. */
-  reset(): void {
-    this.failures = 0;
   }
 }
 

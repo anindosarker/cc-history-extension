@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { CredentialsCache, pickLaterCredentials, readCredentials, type Credentials } from "../src/extension/usage/credentials";
 import { DEFAULT_DISPLAY_SETTINGS, STALE_MARKER, TOKEN_HINT, statusModel } from "../src/extension/usage/format";
 import { PollEngine, type UsageState } from "../src/extension/usage/pollEngine";
-import { CREDENTIAL_RETRY_MS, MAX_BACKOFF_MS } from "../src/extension/usage/schedule";
 import { UsageError, type UsageSnapshot } from "../src/extension/usage/usageClient";
 
 const T0 = Date.UTC(2026, 9, 15, 12, 0, 0);
@@ -68,27 +67,28 @@ describe("poll engine", () => {
     // One interval old: values shown, not yet stale.
     const soon = statusModel(state, settings, h.now());
     expect(soon.text).toBe("$(sparkle) 5h 81% · wk 50%");
-    expect(soon.lines.slice(0, 2)).toEqual(["Stale: last update 1m ago", "Network error"]);
+    expect(soon.lines.slice(0, 2)).toEqual(["Last refresh failed, showing numbers from 1m ago", "Network error"]);
     // Past two intervals the marker appears; the tooltip still leads with the failure.
     h.advance(12 * MIN);
     const old = statusModel(state, settings, h.now());
     expect(old.text).toBe(`$(sparkle) 5h 81% · wk 50%${STALE_MARKER}`);
     expect(old.stale).toBe(true);
-    expect(old.lines[0]).toBe("Stale: last update 13m ago");
+    expect(old.lines[0]).toBe("Last refresh failed, showing numbers from 13m ago");
     expect(old.level).toBe("warning");
   });
 
   it("shows 'usage ?' only before any snapshot has arrived", async () => {
     const h = harness({ creds: () => valid(h.now()), fetch: () => new UsageError("network", "down") });
     const empty: UsageState = { refreshing: true };
-    expect(statusModel(empty, settings, h.now()).text).toBe("$(sparkle) usage …");
+    expect(statusModel(empty, settings, h.now()).text).toBe("$(sync~spin) usage …");
+    expect(statusModel({ refreshing: false }, settings, h.now()).text).toBe("$(sparkle) usage …");
     const { state } = await h.engine.pollOnce(INTERVAL);
     const failed = statusModel(state, settings, h.now());
     expect(failed.text).toBe("$(sparkle) usage ?");
     expect(failed.lines[0]).toBe("Claude Code usage unavailable: Network error");
   });
 
-  it("retries credential failures every 30s without backoff and skips the network while the token is expired", async () => {
+  it("waits a normal interval after credential failures, re-reading them each time, and skips the network while the token is expired", async () => {
     let tokenExpiry = T0 - 1;
     let fetches = 0;
     const h = harness({
@@ -102,15 +102,21 @@ describe("poll engine", () => {
       expect(out.state.error?.reason).toBe("token-expired");
       h.advance(out.delayMs);
     }
-    expect(delays).toEqual([CREDENTIAL_RETRY_MS, CREDENTIAL_RETRY_MS, CREDENTIAL_RETRY_MS, CREDENTIAL_RETRY_MS]);
+    expect(delays).toEqual([INTERVAL, INTERVAL, INTERVAL, INTERVAL]);
     expect(fetches).toBe(0);
     // Every attempt re-read the credentials fresh, bypassing the cache.
     expect(h.reads().fresh).toBe(4);
     expect(h.engine.state.error?.since).toBe(T0);
     // A rejected token (401) is a credential failure too.
-    const rejected = harness({ creds: () => valid(rejected.now()), fetch: () => new UsageError("http", "HTTP 401.", 401) });
-    expect((await rejected.engine.pollOnce(INTERVAL)).delayMs).toBe(CREDENTIAL_RETRY_MS);
-    expect((await rejected.engine.pollOnce(INTERVAL)).delayMs).toBe(CREDENTIAL_RETRY_MS);
+    let rejectedReads = 0;
+    const rejected = harness({
+      creds: () => (rejectedReads++, valid(rejected.now())),
+      fetch: () => new UsageError("http", "HTTP 401.", 401),
+    });
+    expect((await rejected.engine.pollOnce(INTERVAL)).delayMs).toBe(INTERVAL);
+    // The rejected token was dropped: the next attempt reads the credentials again, no 30s loop.
+    expect((await rejected.engine.pollOnce(INTERVAL)).delayMs).toBe(INTERVAL);
+    expect(rejectedReads).toBe(2);
     // Then Claude Code rotates the token: the next poll picks it up and succeeds.
     tokenExpiry = h.now() + 8 * 3_600_000;
     const ok = await h.engine.pollOnce(INTERVAL);
@@ -136,13 +142,13 @@ describe("poll engine", () => {
     expect(h.log.join("\n")).not.toContain("tok");
   });
 
-  it("backs off network and server failures up to five minutes", async () => {
+  it("waits one interval after network and server failures, with no ladder", async () => {
     const h = harness({ creds: () => valid(h.now()), fetch: () => new UsageError("http", "HTTP 503.", 503) });
     const delays: number[] = [];
     for (let i = 0; i < 5; i++) delays.push((await h.engine.pollOnce(INTERVAL)).delayMs);
-    expect(delays).toEqual([120_000, 240_000, MAX_BACKOFF_MS, MAX_BACKOFF_MS, MAX_BACKOFF_MS]);
+    expect(delays).toEqual([INTERVAL, INTERVAL, INTERVAL, INTERVAL, INTERVAL]);
     expect(h.engine.state.error).toMatchObject({ reason: "http", status: 503 });
-    expect(h.log[h.log.length - 1]).toMatch(/poll failed: http \(http 503\), next in 300s$/);
+    expect(h.log[h.log.length - 1]).toMatch(/poll failed: http \(http 503\), next in 60s$/);
   });
 
   it("asks for Claude Code once the token has been expired for ten minutes", async () => {

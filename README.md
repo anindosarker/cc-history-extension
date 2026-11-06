@@ -90,7 +90,7 @@ Screenshots and the tour video are rendered from synthetic demo data.
 
 The only network request the extension ever makes is a GET to `api.anthropic.com/api/oauth/usage`, and only while the usage widget is on. Nothing from that request is stored: the reply is kept in memory for the status bar and the usage panel, and the credential it uses is never written to disk, VS Code storage or the output log. Set `ccHistory.usage.enabled` to `false` and no request is made at all. Setting the environment variable `CC_HISTORY_DISABLE_USAGE` (to anything but `0` or `false`) before launching VS Code does the same for that instance, which is useful for test or headless setups.
 
-Polling is deliberately light: one request every 5 minutes by default (`ccHistory.usage.intervalSeconds`, never under 120), only while a window is focused, and only once per machine: windows share the reply through `~/.cache/cc-history/usage.json` (mode 0600, holds the reply and its timing, never the token). Manual refreshes are limited to one per minute. A `429 Too Many Requests` answer is honoured with its `Retry-After` and at least 15 minutes of backoff, doubling up to 2 hours; after three in a row the widget stops polling and shows its last reading with a `~` until you click Refresh.
+Polling is deliberately light: one request every 15 minutes by default (`ccHistory.usage.intervalSeconds`, never under 300), made by one VS Code window only. Windows elect that window through `~/.cache/cc-history/leader.json` and share the reply through `~/.cache/cc-history/usage.json` (mode 0600, holds the reply, the account email and organization, and the timing, never the token). Focusing a window or opening the usage panel refreshes when the numbers are at least 5 minutes old. Clicking Refresh always fetches, or waits for the window already fetching. A `429 Too Many Requests` answer keeps the last numbers on screen and holds every window for the server's `Retry-After`, at least one minute; that hold is the only thing that can hold back a click. Only one window fetches at a time, through the lock file `~/.cache/cc-history/fetch.lock`. Numbers over an hour old, or from a window that has reset since, are not shown.
 
 ## Settings
 
@@ -113,7 +113,7 @@ Polling is deliberately light: one request every 5 minutes by default (`ccHistor
 | Setting | Default | Description |
 | --- | --- | --- |
 | `ccHistory.usage.enabled` | `true` | Poll Claude Code usage with the credentials Claude Code stores locally. |
-| `ccHistory.usage.intervalSeconds` | `300` | Seconds between polls while the window is focused, at least 120. All windows on the machine share one fetch per interval. |
+| `ccHistory.usage.intervalSeconds` | `900` | Seconds between background polls, at least 300. Only one window polls; the others share its result. |
 | `ccHistory.usage.showInStatusBar` | `true` | Show the widget in the status bar. |
 | `ccHistory.usage.warnAt` | `75` | Percent at which the widget turns to the warning colour. |
 | `ccHistory.usage.errorAt` | `90` | Percent at which the widget turns to the error colour. |
@@ -126,7 +126,7 @@ The "Claude Code History: Show Usage Log" command opens an output channel that r
 
 ## Usage widget and your credentials
 
-The status bar usage widget shows how much of your Claude Code rate limit is used. To do that it reads the Claude Code OAuth token, from the macOS Keychain entry "Claude Code-credentials" or, elsewhere, from `~/.claude/.credentials.json`. The token is used for one request only: a GET to `api.anthropic.com/api/oauth/usage`, the same endpoint Claude Code itself calls. It is kept in memory until shortly before it expires, never written to disk or VS Code storage, never logged, and never sent anywhere else.
+The status bar usage widget shows how much of your Claude Code rate limit is used. To do that it reads the Claude Code OAuth token, from the macOS Keychain entry "Claude Code-credentials" or, elsewhere, from `~/.claude/.credentials.json`. The token is used for one request only: a GET to `api.anthropic.com/api/oauth/usage`, the same endpoint Claude Code itself calls. It is kept in memory until shortly before it expires, never written to disk or VS Code storage, never logged, and never sent anywhere else. To label the account, it also reads `oauthAccount.emailAddress` and `oauthAccount.organizationName` from `~/.claude.json`, and nothing else from that file.
 
 On macOS the first read may show a Keychain access prompt for the `security` tool. Choosing "Always Allow" ends the prompts. The first time the extension activates it shows a one-time notice about this, with a button that turns the widget off. Setting `ccHistory.usage.enabled` to `false` turns the whole widget off, and nothing is read.
 
