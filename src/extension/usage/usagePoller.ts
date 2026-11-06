@@ -73,6 +73,8 @@ export class UsagePoller implements vscode.Disposable {
   private readonly engine: PollEngine;
   private nextDelayMs = this.settings.intervalMs;
   private lastManualAt: number | undefined;
+  // Set after an account switch: the next run fetches even if a snapshot (of the old account) is fresh.
+  private forceFetch = false;
   private readonly cacheFile = usageCachePath();
   private stopWatching: (() => void) | undefined;
 
@@ -142,6 +144,19 @@ export class UsagePoller implements vscode.Disposable {
   }
 
   /**
+   * The signed-in account may have changed (after `claude auth login`): drop the cached token, forget
+   * failure and manual-gap state, and fetch now instead of trusting the old account's snapshot.
+   */
+  credentialsChanged(): void {
+    if (this.disposed) return;
+    this.credentials.invalidate();
+    this.engine.reset();
+    this.lastManualAt = undefined;
+    this.forceFetch = true;
+    void (this.inFlight ?? Promise.resolve()).then(() => this.refresh("manual"));
+  }
+
+  /**
    * Poll now, unless something says not to: the manual gap, another window's fresh snapshot, a 429
    * backoff, another window's fetch in progress, or the pause. Concurrent calls share the in-flight run.
    */
@@ -174,14 +189,18 @@ export class UsagePoller implements vscode.Disposable {
     const now = Date.now();
     const { manualWaitUntil: _w, ...rest } = this.engine.state;
     this.engine.state = rest;
+    const forced = this.forceFetch;
+    this.forceFetch = false;
     const cache = await readUsageCache(this.cacheFile);
-    if (cache) this.engine.adopt(cache);
+    if (cache && !forced) this.engine.adopt(cache);
+    // A forced run ignores snapshot freshness but still respects another window's lock and a 429 backoff.
+    const { fetchedAt: _old, ...withoutSnapshot } = cache ?? {};
     const d = cacheDecision({
-      cache,
+      cache: forced ? withoutSnapshot : cache,
       now,
       intervalMs: this.settings.intervalMs,
       manual: source === "manual",
-      localFetchedAt: this.engine.state.snapshot?.fetchedAt,
+      localFetchedAt: forced ? undefined : this.engine.state.snapshot?.fetchedAt,
     });
     if (d.action !== "fetch") {
       this.nextDelayMs = Math.max(0, d.until - now);

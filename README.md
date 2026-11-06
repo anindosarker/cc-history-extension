@@ -72,6 +72,7 @@ Or in VS Code: Extensions view, the `...` menu, "Install from VSIX...".
 - Use the search icon in the view title (or the "Claude Code History: Find Session" command) to search across all sessions.
 - Projects of the folders open in the current window are pinned to the top with a highlighted label. Hover a project row for the pin action: pin any project above the sort order, or click the filled pin to unpin one. Pins are remembered per workspace.
 - Use the sort icon in the view title (or the "Claude Code History: Sort by..." command) to order projects and sessions by last activity, name or session count. The choice also orders Find Session.
+- Use the account icon in the view title (or the "Claude Code History: Switch Claude Account" command) to run `claude auth login` in a new terminal. Close the terminal when done and the usage widget picks up the new account.
 - A session that is still running shows a blue "Live" dot in the header and picks up new messages as Claude Code writes them. Scroll up and a "N new messages" pill appears instead; the reload icon re-reads the whole transcript.
 - The Agents button lists subagents in spawn order, name first like Claude Code's own list, with a check for done, a pulsing dot for running and a red x for failed.
 - Inside a session, press Cmd+F (Ctrl+F on Windows and Linux) to focus the message search. Enter goes to the next match, Shift+Enter to the previous one, Escape clears.

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Switch Claude Account: the account icon in the Sessions view title (or the "Claude Code History: Switch Claude Account" command) opens a "Claude Login" terminal running `claude auth login`. When you close that terminal, the usage widget re-reads the credentials and fetches usage for the new account. The usage panel (click the usage status bar item) has a "Switch account" button in its header, and also in the error box when credentials are missing or expired.
+
 ## 0.6.1
 
 - Resume with bypass permissions: a session's right-click menu has "Resume in Claude Code (Bypass Permissions)", and the session view's resume button has a dropdown with the same option. It runs `claude --resume <id> --permission-mode bypassPermissions`. Plain Resume is unchanged.

@@ -78,7 +78,7 @@ export function waitLabel(waitUntil: number | undefined, now: number): string | 
   return `Please wait ${Math.max(1, Math.ceil((waitUntil - now) / 1000))}s`;
 }
 
-export type UsageWebviewToHost = { type: "usageRequest" } | { type: "usageRefresh" };
+export type UsageWebviewToHost = { type: "usageRequest" } | { type: "usageRefresh" } | { type: "switchAccount" };
 export type UsageHostToWebview = { type: "usageSnapshot"; view: UsageView };
 
 export const ERROR_REASON_TEXT: Record<UsageErrorReason, string> = {

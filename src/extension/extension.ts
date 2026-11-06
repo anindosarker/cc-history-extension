@@ -8,6 +8,7 @@ import { copyPath, revealFolder } from "./folder";
 import { Indexer } from "./indexer";
 import { activityOf } from "./indexScan";
 import { resumeSession } from "./resume";
+import { switchAccount } from "./switchAccount";
 import { loadSessionData, SessionPanelManager } from "./sessionPanel";
 import { SessionStatusProvider } from "./statusProvider";
 import { relativeTime } from "./time";
@@ -58,6 +59,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("ccHistory.showUsageLog", () => usageLog.show(true)),
     vscode.commands.registerCommand("ccHistory.refreshUsage", () => usage.refresh("manual")),
     vscode.commands.registerCommand("ccHistory.openUsage", () => usagePanel.open()),
+    vscode.commands.registerCommand("ccHistory.switchAccount", () => {
+      context.subscriptions.push(switchAccount(() => usage.credentialsChanged()));
+    }),
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),
     vscode.window.registerFileDecorationProvider(status),
     view.onDidChangeVisibility((e) => status.setVisible(e.visible)),

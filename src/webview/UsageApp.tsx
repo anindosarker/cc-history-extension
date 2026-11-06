@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, Loader2, RefreshCw } from "lucide-react";
 import {
   DEFAULT_THRESHOLDS,
   PAUSED_NOTICE,
@@ -45,6 +45,7 @@ export function UsageApp() {
   }, []);
 
   const refresh = () => post({ type: "usageRefresh" });
+  const switchAccount = () => post({ type: "switchAccount" });
   const wait = view ? waitLabel(view.waitUntil, now) : undefined;
   const refreshDisabled = view ? view.refreshing || wait !== undefined : true;
 
@@ -71,6 +72,10 @@ export function UsageApp() {
             <RefreshCw className={cn(view.refreshing && "animate-spin")} />
             {wait ?? "Refresh"}
           </Button>
+          <Button variant="ghost" size="sm" onClick={switchAccount} aria-label="Switch account" title="Sign in to a different Claude account">
+            <ArrowLeftRight />
+            Switch account
+          </Button>
         </div>
 
         {view.paused && (
@@ -87,6 +92,12 @@ export function UsageApp() {
               <Button variant="outline" size="sm" onClick={refresh} disabled={refreshDisabled} title={wait}>
                 {wait ?? "Retry"}
               </Button>
+              {(view.error.reason === "no-credentials" || view.error.reason === "token-expired") && (
+                <Button variant="outline" size="sm" onClick={switchAccount}>
+                  <ArrowLeftRight />
+                  Switch account
+                </Button>
+              )}
               <span className="text-[11px] text-muted-foreground">Last attempt {formatAgo(now - view.error.at)}</span>
             </div>
           </div>

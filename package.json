@@ -88,6 +88,12 @@
         "icon": "$(list-ordered)"
       },
       {
+        "command": "ccHistory.switchAccount",
+        "title": "Switch Claude Account",
+        "category": "Claude Code History",
+        "icon": "$(account)"
+      },
+      {
         "command": "ccHistory.openSession",
         "title": "Open",
         "category": "Claude Code History"
@@ -186,6 +192,11 @@
           "command": "ccHistory.refresh",
           "when": "view == ccHistory.sessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "ccHistory.switchAccount",
+          "when": "view == ccHistory.sessions",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [

@@ -46,6 +46,7 @@ export class UsagePanelManager implements vscode.Disposable {
   private onMessage(m: UsageWebviewToHost): void {
     if (m.type === "usageRequest") this.push();
     else if (m.type === "usageRefresh") void this.poller.refresh("manual");
+    else if (m.type === "switchAccount") void vscode.commands.executeCommand("ccHistory.switchAccount");
   }
 
   private push(): void {
