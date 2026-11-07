@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -52,6 +53,28 @@ export function parseClaudeAccount(raw: string): UsageAccount | undefined {
   if (typeof a.emailAddress === "string" && a.emailAddress) out.email = a.emailAddress;
   if (typeof a.organizationName === "string" && a.organizationName) out.organization = a.organizationName;
   return out.email || out.organization ? out : undefined;
+}
+
+/**
+ * The signed-in account's id from ~/.claude.json's oauthAccount block, to notice an account switch.
+ * Only this one string is taken. Undefined when the file, the block or the id is missing.
+ */
+export function parseAccountUuid(raw: string): string | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const acct = typeof data === "object" && data !== null ? (data as { oauthAccount?: unknown }).oauthAccount : undefined;
+  if (typeof acct !== "object" || acct === null) return undefined;
+  const id = (acct as Record<string, unknown>).accountUuid;
+  return typeof id === "string" && id ? id : undefined;
+}
+
+/** A sha256 digest of a token, so two tokens can be compared without keeping or logging either. */
+export function tokenDigest(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 /** Pull the claude.ai OAuth block out of the credentials JSON; undefined when there is none. */
@@ -154,6 +177,21 @@ export class CredentialsCache {
     if (!opts.fresh && this.cached && this.fresh(this.cached, now)) return this.cached;
     this.cached = await this.reader();
     return this.cached;
+  }
+
+  /**
+   * Read the credentials again, bypassing the cache, and say whether the token differs from the
+   * cached one (a renewal, or an account switch the cache would otherwise hide until expiry). Only
+   * digests are compared. A new token replaces the cached one. False when nothing is cached or
+   * nothing is signed in.
+   */
+  async tokenChanged(): Promise<boolean> {
+    const cached = this.cached;
+    if (!cached) return false;
+    const fresh = await this.reader();
+    if (!fresh || tokenDigest(fresh.accessToken) === tokenDigest(cached.accessToken)) return false;
+    this.cached = fresh;
+    return true;
   }
 
   /** Drop the token, for example after the server rejected it. */

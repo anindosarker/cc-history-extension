@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Usage now follows a Claude account switch right away. Before, Refresh kept showing the old account's numbers until the window was reloaded or the old token expired, unless the "Claude Login" terminal was closed first, and a `/login` inside Claude Code was never noticed. Every window now watches `~/.claude.json` for a new signed-in account, and Refresh re-reads the token and treats it as a switch when `~/.claude.json` names a different account (a renewed token for the same account is not a switch). Either way the old numbers are dropped in every window and one fetch is made for the new account.
+
 ## 1.0.1
 
 - Usage panel header no longer cuts off the signed-in account: the title and buttons share the first row, and the account, organization and plan get their own full-width line below.

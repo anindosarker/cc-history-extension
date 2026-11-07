@@ -5,8 +5,9 @@ import { getClaudeCommand } from "./config";
 const TERMINAL_NAME = "Claude Login";
 
 /**
- * Open a new terminal in the home folder and run `claude auth login`. When that terminal closes,
- * `onClosed` runs so the usage widget can re-read the credentials of the account now signed in.
+ * Open a new terminal in the home folder and run `claude auth login`. The usage widget notices the
+ * switch on its own (it watches ~/.claude.json); `onClosed` runs when the terminal closes as one more
+ * look at that file, which applies a switch only if the watcher has not already.
  */
 export function switchAccount(onClosed: () => void): vscode.Disposable {
   const terminal = vscode.window.createTerminal({ name: TERMINAL_NAME, cwd: os.homedir() });

@@ -27,6 +27,17 @@ export interface RefresherDeps {
   cancelled(): boolean;
   /** Drop the cached token so the next fetch reads the credentials again. */
   invalidateCredentials(): void;
+  /**
+   * Read the credentials past the cache and say whether the token differs from the cached one
+   * (compared by digest); a new token replaces the cached one. A manual refresh asks first;
+   * background refreshes never do.
+   */
+  tokenChanged?(): Promise<boolean>;
+  /**
+   * After a new token: the epoch of an account switch when ~/.claude.json names another account than
+   * the one last seen (taking it as seen), or undefined for the same account (a renewal).
+   */
+  accountSwitchedAt?(): Promise<number | undefined>;
   now(): number;
   intervalMs(): number;
   log(line: string): void;
@@ -63,11 +74,6 @@ export class UsageRefresher {
     return (this.inFlight ?? Promise.resolve()).then(() => (this.inFlight ? this.settled() : undefined));
   }
 
-  /** The next run fetches for a newly signed-in account. */
-  force(): void {
-    this.forceNext = true;
-  }
-
   /** Note an attempt a window really made, so polls space themselves from it. */
   noteAttempt(at: number | undefined): void {
     if (at !== undefined && at > this.lastAttemptAt) this.lastAttemptAt = at;
@@ -97,15 +103,54 @@ export class UsageRefresher {
   }
 
   /**
-   * This window switched account: record a new epoch in usage.json (wiping the old account's numbers
-   * for every window) and make the next run fetch with the new credentials.
+   * This window noticed an account switch: record a new epoch in usage.json (wiping the old account's
+   * numbers for every window) and make the next run fetch with the new credentials. `at` is when the
+   * switch happened (the ~/.claude.json write), so windows noticing the same change agree on it.
+   * Returns false, changing nothing, when this window or usage.json already has that switch or a
+   * later one: another window applied it and fetches (or fetched) for it.
    */
-  async switchAccount(): Promise<void> {
-    const epoch = Math.max(this.deps.now(), this.seenEpoch + 1);
+  async switchAccount(at?: number): Promise<boolean> {
+    const epoch = at ?? Math.max(this.deps.now(), this.seenEpoch + 1);
+    if (epoch <= this.seenEpoch) return false;
+    const cache = await this.deps.readCache();
+    if ((cache?.credentialsEpoch ?? 0) >= epoch) {
+      if (this.observe(cache)) this.deps.onChange();
+      return false;
+    }
     this.checkEpoch({ credentialsEpoch: epoch });
     this.forceNext = true;
     this.deps.onChange();
-    await this.deps.updateCache(() => ({ credentialsEpoch: epoch }));
+    // Two windows writing the same epoch write the same thing; a result fetched for it stays.
+    await this.deps.updateCache((c) => ((c.credentialsEpoch ?? 0) >= epoch ? c : { credentialsEpoch: epoch }));
+    return true;
+  }
+
+  /**
+   * Apply an account switch (see switchAccount) and, when it was new, fetch for the new account.
+   * Returns whether it was new.
+   */
+  async accountChanged(at?: number): Promise<boolean> {
+    if (!(await this.switchAccount(at))) return false;
+    await this.settled();
+    this.forceNext = true;
+    await this.refresh("manual");
+    return true;
+  }
+
+  /**
+   * The Refresh button: when the token on disk is not the cached one and ~/.claude.json names another
+   * account, the account was switched behind this window's back, so switch first. A new token for the
+   * same account is a renewal: it is used, and the refresh stays an ordinary one (a rate limit holds).
+   */
+  async manualRefresh(): Promise<void> {
+    if (!this.inFlight && this.deps.tokenChanged && (await this.deps.tokenChanged())) {
+      const at = await this.deps.accountSwitchedAt?.();
+      if (at !== undefined) {
+        this.deps.log(`${new Date(this.deps.now()).toISOString()} account change detected (new token on refresh)`);
+        if (await this.accountChanged(at)) return;
+      }
+    }
+    return this.refresh("manual");
   }
 
   refresh(source: RefreshSource): Promise<void> {
@@ -169,11 +214,16 @@ export class UsageRefresher {
       this.deps.log(`${new Date(this.deps.now()).toISOString()} another window is fetching usage, waiting for its result`);
       const released = await this.deps.waitForRelease(holder.id, holder.at + LOCK_MAX_AGE_MS);
       if (this.deps.cancelled()) return;
-      // After an account switch the holder may have used the old token: never take its result.
-      if (released && !forced) {
+      if (released) {
         const cache = await this.deps.readCache();
-        if (this.observe(cache)) this.deps.onChange();
-        if (cache?.attemptedAt !== undefined && cache.attemptedAt >= holder.at) {
+        const attempted = cache?.attemptedAt !== undefined && cache.attemptedAt >= holder.at;
+        // After an account switch, take the holder's result only when it was written for this switch
+        // (a fetch started before it is never written); otherwise the old token may have made it.
+        const usable = attempted && (!forced || (cache?.credentialsEpoch ?? 0) >= this.seenEpoch);
+        if (!forced || usable) {
+          if (this.observe(cache)) this.deps.onChange();
+        } else if (this.checkEpoch(cache)) this.deps.onChange();
+        if (usable) {
           this.nextDelayMs = this.deps.intervalMs();
           return;
         }
@@ -187,6 +237,13 @@ export class UsageRefresher {
   private async decide(source: RefreshSource, forced: boolean, now: number): Promise<CacheAction> {
     const cache = await this.deps.readCache();
     if (this.checkEpoch(cache)) this.deps.onChange();
+    // usage.json is wiped at each switch, so an attempt recorded under the current epoch was made for
+    // the new account: another window that noticed the same switch already fetched.
+    if (forced && cache?.attemptedAt !== undefined && (cache.credentialsEpoch ?? 0) >= this.seenEpoch && this.seenEpoch > 0) {
+      if (this.deps.engine.adopt(cache)) this.deps.onChange();
+      this.noteAttempt(cache.attemptedAt);
+      return { action: "fresh", until: cache.attemptedAt + this.deps.intervalMs() };
+    }
     if (cache && !forced) {
       if (this.deps.engine.adopt(cache)) this.deps.onChange();
       this.noteAttempt(cache.attemptedAt);

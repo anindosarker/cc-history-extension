@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("ccHistory.openUsage", () => usagePanel.open()),
     vscode.commands.registerCommand("ccHistory.switchAccount", () => {
-      context.subscriptions.push(switchAccount(() => usage.credentialsChanged()));
+      context.subscriptions.push(switchAccount(() => usage.checkAccount()));
     }),
     vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs),
     vscode.window.registerFileDecorationProvider(status),

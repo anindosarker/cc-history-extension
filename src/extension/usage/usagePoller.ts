@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { AccountWatcher, readClaudeJson, watchClaudeJson } from "./accountWatch";
 import { CredentialsCache } from "./credentials";
 import { DEFAULT_DISPLAY_SETTINGS, type UsageDisplaySettings } from "./format";
 import { PollEngine, type UsageFailure, type UsageState } from "./pollEngine";
@@ -68,6 +69,7 @@ export class UsagePoller implements vscode.Disposable {
   private readonly refresher: UsageRefresher;
   private readonly cacheFile = usageCachePath();
   private stopWatching: (() => void) | undefined;
+  private readonly account: AccountWatcher;
 
   constructor(
     version: string,
@@ -87,6 +89,8 @@ export class UsagePoller implements vscode.Disposable {
       waitForRelease: (id, deadline) => waitForLockRelease(id, deadline, () => lock.holder()?.id, { cancelled: () => this.disposed }),
       cancelled: () => this.disposed,
       invalidateCredentials: () => this.credentials.invalidate(),
+      tokenChanged: () => this.credentials.tokenChanged(),
+      accountSwitchedAt: () => this.account.takeSwitch(),
       readCache: () => readUsageCache(this.cacheFile),
       updateCache: async (change) => {
         try {
@@ -99,6 +103,12 @@ export class UsagePoller implements vscode.Disposable {
       intervalMs: () => this.settings.intervalMs,
       log: (line) => this.log(line),
       onChange: () => this.emit(),
+    });
+    this.account = new AccountWatcher({
+      read: () => readClaudeJson(),
+      onSwitch: (at) => this.credentialsChanged(at),
+      now: () => Date.now(),
+      log: (line) => this.log(line),
     });
     this.disposables.push(
       vscode.window.onDidChangeWindowState((s) => {
@@ -154,7 +164,14 @@ export class UsagePoller implements vscode.Disposable {
 
   private startWatching(): void {
     if (this.stopWatching) return;
-    this.stopWatching = watchUsageCache(() => void this.onCacheChanged(), this.cacheFile);
+    const stopCache = watchUsageCache(() => void this.onCacheChanged(), this.cacheFile);
+    // The account signed in now is the starting point, not a switch.
+    void this.account.init();
+    const stopAccount = watchClaudeJson(() => void this.account.check());
+    this.stopWatching = () => {
+      stopCache();
+      stopAccount();
+    };
   }
 
   private startHeartbeat(): void {
@@ -194,26 +211,32 @@ export class UsagePoller implements vscode.Disposable {
   }
 
   /**
-   * The signed-in account may have changed (after `claude auth login`): drop the cached token and
-   * fetch now instead of trusting the old account's snapshot or Retry-After.
+   * Look at ~/.claude.json again now (for example when the login terminal closes). A switch it shows
+   * goes through the same path as the file watcher, so it is applied and fetched for only once.
    */
-  credentialsChanged(): void {
-    if (this.disposed) return;
-    // Every window sees the switch through usage.json; a fetch in flight here discards its result.
-    void this.refresher
-      .switchAccount()
-      .then(() => this.refresher.settled())
-      .then(() => {
-        this.refresher.force();
-        return this.refresh("manual");
-      });
+  checkAccount(): void {
+    if (this.disposed || !this.settings.enabled) return;
+    void this.account.check();
+  }
+
+  /**
+   * The signed-in account changed (at `at`, when ~/.claude.json was written): drop the cached token and
+   * fetch now instead of trusting the old account's snapshot or Retry-After. Every window sees the
+   * switch through usage.json; a fetch in flight discards its result. Windows noticing the same
+   * change agree on `at`, so only the first applies it and fetches.
+   */
+  private credentialsChanged(at: number): void {
+    if (this.disposed || !this.settings.enabled) return;
+    this.clearTimer();
+    void this.refresher.accountChanged(at).finally(() => this.schedule());
   }
 
   /** See RefreshSource. Concurrent calls share the run in flight. */
   refresh(source: RefreshSource = "auto"): Promise<void> {
     if (!this.settings.enabled || this.disposed) return Promise.resolve();
     this.clearTimer();
-    const p = this.refresher.refresh(source);
+    // A manual refresh reads the credentials past the cache first, to catch a switch made elsewhere.
+    const p = source === "manual" ? this.refresher.manualRefresh() : this.refresher.refresh(source);
     void p.finally(() => this.schedule());
     return p;
   }

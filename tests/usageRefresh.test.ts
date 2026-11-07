@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CredentialsCache, type Credentials } from "../src/extension/usage/credentials";
+import { AccountWatcher, watchClaudeJson, type ClaudeJsonRead } from "../src/extension/usage/accountWatch";
+import { CredentialsCache, parseAccountUuid, tokenDigest, type Credentials } from "../src/extension/usage/credentials";
 import { DEFAULT_DISPLAY_SETTINGS, REFRESHING_ICON, statusModel, usableSnapshot } from "../src/extension/usage/format";
 import { PollEngine } from "../src/extension/usage/pollEngine";
 import { FetchLock, fileLockDeps, type LockDeps } from "../src/extension/usage/fetchLock";
@@ -41,6 +42,8 @@ interface World {
   lockFile: string | undefined;
   token: string;
   alive: Set<number>;
+  /** ~/.claude.json as the account watcher reads it. */
+  claudeJson?: ClaudeJsonRead;
 }
 
 function newWorld(cache?: UsageCacheFile): World {
@@ -87,6 +90,7 @@ function harness(
     now: () => w.now,
     log: (line) => log.push(line),
   });
+  const account = new AccountWatcher({ read: async () => w.claudeJson, onSwitch: () => {}, now: () => w.now, log: () => {} });
   const lock = new FetchLock(lockDeps(w, opts.pid ?? 4242));
   const refresher = new UsageRefresher({
     engine,
@@ -107,6 +111,8 @@ function harness(
     },
     cancelled: () => cancelled,
     invalidateCredentials: () => creds.invalidate(),
+    tokenChanged: () => creds.tokenChanged(),
+    accountSwitchedAt: () => account.takeSwitch(),
     now: () => w.now,
     intervalMs: () => INTERVAL,
     log: (line) => log.push(line),
@@ -120,6 +126,8 @@ function harness(
     waits,
     tokens,
     refresh: (s: RefreshSource) => refresher.refresh(s),
+    manual: () => refresher.manualRefresh(),
+    account,
     fetches: () => fetches,
     cache: () => w.cache,
     setCache: (c: UsageCacheFile | undefined) => (w.cache = c),
@@ -656,5 +664,241 @@ describe("account switch", () => {
     h.engine.adopt({ fetchedAt: T0, snapshot: snap(T0) });
     expect(h.engine.state.account).toBeUndefined();
     expect(h.engine.state.plan).toBeUndefined();
+  });
+});
+
+describe("account change detection", () => {
+  const claudeJson = (uuid?: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ numStartups: 3, ...(uuid ? { oauthAccount: { accountUuid: uuid, emailAddress: "a@example.com", ...extra } } : {}) });
+
+  /** A watcher over a fake ~/.claude.json; `file` is what the next read returns. */
+  function watcher(onSwitch: (at: number) => void = () => {}) {
+    const state: { file: ClaudeJsonRead | undefined; switches: number[]; log: string[] } = { file: undefined, switches: [], log: [] };
+    const w = new AccountWatcher({
+      read: async () => state.file,
+      onSwitch: (at) => {
+        state.switches.push(at);
+        onSwitch(at);
+      },
+      now: () => T0,
+      log: (l) => state.log.push(l),
+    });
+    return { w, state };
+  }
+
+  it("reads only the account id", () => {
+    expect(parseAccountUuid(claudeJson("u-1"))).toBe("u-1");
+    expect(parseAccountUuid(claudeJson())).toBeUndefined();
+    expect(parseAccountUuid("not json")).toBeUndefined();
+    expect(parseAccountUuid(JSON.stringify({ oauthAccount: { accountUuid: 7 } }))).toBeUndefined();
+  });
+
+  it("does not report the account signed in at startup", async () => {
+    const { w, state } = watcher();
+    state.file = { raw: claudeJson("u-1"), mtimeMs: T0 };
+    await w.init();
+    expect(await w.check()).toBe(false);
+    expect(state.switches).toEqual([]);
+  });
+
+  it("reports a changed account id once, with the file's write time", async () => {
+    const { w, state } = watcher();
+    state.file = { raw: claudeJson("u-1"), mtimeMs: T0 };
+    await w.init();
+    state.file = { raw: claudeJson("u-2"), mtimeMs: T0 + 5_000.7 };
+    const [a, b] = await Promise.all([w.check(), w.check()]);
+    expect([a, b]).toEqual([true, false]);
+    expect(await w.check()).toBe(false);
+    expect(state.switches).toEqual([T0 + 5_000]);
+    expect(state.log).toEqual([`${new Date(T0).toISOString()} account change detected (~/.claude.json)`]);
+  });
+
+  it("ignores an unchanged id, a missing file and a file without an account", async () => {
+    const { w, state } = watcher();
+    state.file = { raw: claudeJson("u-1"), mtimeMs: T0 };
+    await w.init();
+    state.file = { raw: claudeJson("u-1", { organizationName: "Other" }), mtimeMs: T0 + 1 };
+    expect(await w.check()).toBe(false);
+    state.file = undefined;
+    expect(await w.check()).toBe(false);
+    state.file = { raw: claudeJson(), mtimeMs: T0 + 2 };
+    expect(await w.check()).toBe(false);
+    state.file = { raw: "{ half writ", mtimeMs: T0 + 3 };
+    expect(await w.check()).toBe(false);
+    // Signing back in to the same account after a sign-out is no switch either.
+    state.file = { raw: claudeJson("u-1"), mtimeMs: T0 + 4 };
+    expect(await w.check()).toBe(false);
+    expect(state.switches).toEqual([]);
+  });
+
+  it("switches the account and fetches with the new token when the id changes", async () => {
+    const w = newWorld();
+    const h = harness({}, w);
+    await h.refresh("auto");
+    let run: Promise<boolean> | undefined;
+    const { w: acct, state } = watcher((at) => (run = h.refresher.accountChanged(at)));
+    state.file = { raw: claudeJson("u-1"), mtimeMs: T0 };
+    await acct.init();
+    w.token = "new";
+    h.advance(MIN);
+    state.file = { raw: claudeJson("u-2"), mtimeMs: w.now };
+    await acct.check();
+    expect(await run).toBe(true);
+    expect(h.tokens).toEqual(["old", "new"]);
+    expect(w.cache?.credentialsEpoch).toBe(w.now);
+  });
+
+  it("lets two windows noticing the same change make one fetch", async () => {
+    const w = newWorld({ fetchedAt: T0 - MIN, attemptedAt: T0 - MIN, snapshot: snap(T0 - MIN, 100) });
+    const a = harness({ pid: 99, fetch: async () => (await tick(), snap(w.now, 11)) }, w);
+    const b = harness({ pid: 77, fetch: async () => (await tick(), snap(w.now, 11)) }, w);
+    const lockFree = async () => {
+      while (w.lockFile !== undefined) await tick();
+      return true;
+    };
+    a.onOtherWindow(lockFree);
+    b.onOtherWindow(lockFree);
+    w.token = "new";
+    const at = T0 - 500;
+    // Both at once.
+    const [ra, rb] = await Promise.all([a.refresher.accountChanged(at), b.refresher.accountChanged(at)]);
+    expect(ra || rb).toBe(true);
+    expect(a.fetches() + b.fetches()).toBe(1);
+    expect(w.cache?.snapshot?.fiveHour?.pct).toBe(11);
+    expect(a.engine.state.snapshot?.fiveHour?.pct).toBe(11);
+    expect(b.engine.state.snapshot?.fiveHour?.pct).toBe(11);
+    // A third window noticing it later, after the result is in, takes that result.
+    const c = harness({ pid: 4242 }, w);
+    expect(await c.refresher.accountChanged(at)).toBe(false);
+    expect(c.fetches()).toBe(0);
+    expect(c.engine.state.snapshot?.fiveHour?.pct).toBe(11);
+    // And the window that applied it already ignores its own watcher's late report.
+    expect(await a.refresher.accountChanged(at)).toBe(false);
+    expect(a.fetches() + b.fetches()).toBe(1);
+  });
+
+  it("when both read usage.json before either wrote the switch, still one fetch", async () => {
+    for (const together of [true, false]) {
+      const before: UsageCacheFile = { fetchedAt: T0 - MIN, attemptedAt: T0 - MIN, snapshot: snap(T0 - MIN, 100) };
+      const w = newWorld(structuredClone(before));
+      const a = harness({ pid: 99, fetch: async () => (await tick(), snap(w.now, 11)) }, w);
+      const b = harness({ pid: 77, fetch: async () => (await tick(), snap(w.now, 11)) }, w);
+      a.onOtherWindow(async () => {
+        while (w.lockFile !== undefined) await tick();
+        return true;
+      });
+      b.onOtherWindow(async () => {
+        while (w.lockFile !== undefined) await tick();
+        return true;
+      });
+      w.token = "new";
+      expect(await a.refresher.switchAccount(T0 - 500)).toBe(true);
+      const afterA = structuredClone(w.cache);
+      // B read the file before A's write landed: it applies the same epoch and writes the same thing.
+      w.cache = structuredClone(before);
+      expect(await b.refresher.switchAccount(T0 - 500)).toBe(true);
+      expect(w.cache).toEqual(afterA);
+      if (together) await Promise.all([a.refresh("manual"), b.refresh("manual")]);
+      else {
+        await a.refresh("manual");
+        await b.refresh("manual");
+      }
+      expect(a.fetches() + b.fetches()).toBe(1);
+      expect(a.engine.state.snapshot?.fiveHour?.pct).toBe(11);
+      expect(b.engine.state.snapshot?.fiveHour?.pct).toBe(11);
+    }
+  });
+
+  it("one window after the other: the second neither bumps nor fetches", async () => {
+    const w = newWorld();
+    const a = harness({ pid: 99 }, w);
+    const b = harness({ pid: 77 }, w);
+    w.token = "new";
+    expect(await a.refresher.accountChanged(T0)).toBe(true);
+    const after = structuredClone(w.cache);
+    w.now += 2_000;
+    expect(await b.refresher.accountChanged(T0)).toBe(false);
+    expect(w.cache).toEqual(after);
+    expect(a.fetches() + b.fetches()).toBe(1);
+  });
+
+  it("on a manual refresh, a new token for another account is an account switch: fetch with it", async () => {
+    const w = newWorld();
+    w.claudeJson = { raw: claudeJson("u-1"), mtimeMs: T0 - MIN };
+    const h = harness({}, w);
+    await h.account.init();
+    await h.refresh("auto");
+    w.token = "new";
+    h.advance(MIN);
+    w.claudeJson = { raw: claudeJson("u-2"), mtimeMs: w.now - 1_000 };
+    await h.manual();
+    expect(h.tokens).toEqual(["old", "new"]);
+    expect(h.fetches()).toBe(2);
+    expect(w.cache?.credentialsEpoch).toBe(w.now - 1_000);
+    expect(h.log.some((l) => l.endsWith("account change detected (new token on refresh)"))).toBe(true);
+  });
+
+  it("a renewed token for the same account is no switch: no epoch, and a rate limit still holds", async () => {
+    const w = newWorld();
+    w.claudeJson = { raw: claudeJson("u-1"), mtimeMs: T0 - MIN };
+    const h = harness({ fetch: () => tooMany(40 * MIN) }, w);
+    await h.account.init();
+    await h.refresh("manual");
+    expect(h.engine.state.retryUntil).toBe(T0 + 40 * MIN);
+    const before = structuredClone(w.cache);
+    w.token = "renewed";
+    h.advance(MIN);
+    await h.manual();
+    expect(h.fetches()).toBe(1);
+    expect(w.cache).toEqual(before);
+    expect(w.cache?.credentialsEpoch).toBeUndefined();
+    expect(h.log.some((l) => l.includes("account change detected"))).toBe(false);
+    expect(h.log.some((l) => l.includes("manual refresh refused"))).toBe(true);
+    // Once the hold is over, the renewed token is the one used.
+    h.advance(40 * MIN);
+    await h.manual();
+    expect(h.tokens).toEqual(["old", "renewed"]);
+  });
+
+  it("on a manual refresh, the same token is no switch", async () => {
+    const w = newWorld();
+    const h = harness({}, w);
+    await h.refresh("auto");
+    h.advance(MIN);
+    await h.manual();
+    expect(h.tokens).toEqual(["old", "old"]);
+    expect(w.cache?.credentialsEpoch).toBeUndefined();
+    expect(h.log.some((l) => l.includes("account change detected"))).toBe(false);
+  });
+
+  it("background refreshes never read past the token cache", async () => {
+    let reads = 0;
+    const cache = new CredentialsCache(async () => (reads++, valid(T0)));
+    await cache.get(T0);
+    await cache.get(T0 + MIN);
+    expect(reads).toBe(1);
+    expect(await cache.tokenChanged()).toBe(false);
+    expect(reads).toBe(2);
+    expect(tokenDigest("a")).not.toBe(tokenDigest("b"));
+    expect(tokenDigest("a")).toHaveLength(64);
+  });
+
+  it("watches ~/.claude.json across atomic rename writes", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-acct-"));
+    const file = path.join(dir, ".claude.json");
+    fs.writeFileSync(file, claudeJson("u-1"));
+    let calls = 0;
+    const stop = watchClaudeJson(() => calls++, file, { debounceMs: 20, intervalMs: 25 });
+    try {
+      await new Promise((r) => setTimeout(r, 60));
+      const tmp = path.join(dir, ".claude.json.tmp");
+      fs.writeFileSync(tmp, claudeJson("u-2"));
+      fs.renameSync(tmp, file);
+      for (let i = 0; i < 100 && calls === 0; i++) await new Promise((r) => setTimeout(r, 20));
+      expect(calls).toBe(1);
+    } finally {
+      stop();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
